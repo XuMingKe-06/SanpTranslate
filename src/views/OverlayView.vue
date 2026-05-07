@@ -236,7 +236,7 @@ onMounted(async () => {
   logger.info(TAG, 'OverlayView onMounted')
   initCanvasSize()
 
-  // 主动从后端拉取蒙版图像数据（避免事件时序问题）
+  // 从后端拉取蒙版图像数据（后端先创建窗口再执行截图）
   try {
     const overlayData = await invoke<{ data: string; mime: string } | null>('get_overlay_image')
     if (overlayData) {

@@ -59,43 +59,8 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "capture" => {
-                // 截取主显示器全屏截图并打开蒙版窗口
-                match (|| -> Result<(), AppError> {
-                    // 从缓存获取截图服务，避免重复调用 Monitor::all()
-                    let (jpeg_base64, rgba_image) = {
-                        let state = app.state::<std::sync::Mutex<crate::capture::CaptureService>>();
-                        let locked = state.lock().map_err(|e| AppError::ConfigError(format!("锁定截图服务失败: {}", e)))?;
-                        locked.capture_fullscreen_with_cache(None)?
-                    };
-
-                    // 获取显示器信息并缓存
-                    let monitor = app.primary_monitor()
-                        .ok()
-                        .flatten()
-                        .ok_or_else(|| AppError::ConfigError("获取主显示器信息失败".to_string()))?;
-                    let scale_factor = monitor.scale_factor();
-                    let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
-                    let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
-
-                    // 缓存全屏截图数据
-                    {
-                        let store = app.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
-                        let mut store = store.lock().map_err(|e| AppError::ConfigError(format!("锁定缓存失败: {}", e)))?;
-                        store.screen = Some(crate::window::CachedScreen {
-                            image: rgba_image,
-                            monitor_x,
-                            monitor_y,
-                            scale_factor,
-                        });
-                    }
-
-                    let overlay_data = crate::window::OverlayImageData {
-                        data: jpeg_base64,
-                        mime: "image/jpeg".to_string(),
-                    };
-                    crate::window::create_overlay_window(app, &overlay_data)?;
-                    Ok(())
-                })() {
+                // 先创建蒙版窗口，再执行截图
+                match crate::hotkey::handle_capture_flow(app) {
                     Ok(_) => {}
                     Err(e) => log::error!("截图失败: {}", e),
                 }

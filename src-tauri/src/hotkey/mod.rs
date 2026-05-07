@@ -39,44 +39,52 @@ pub fn register_hotkeys(app: &tauri::AppHandle, config: &ShortcutConfig) -> Resu
     Ok(())
 }
 
+/// 截屏流程：先创建蒙版窗口，再执行耗时截图
+pub fn handle_capture_flow(app: &tauri::AppHandle) -> Result<(), AppError> {
+    // Step 1: 获取显示器信息（快速操作）
+    let monitor = app.primary_monitor()
+        .ok()
+        .flatten()
+        .ok_or_else(|| AppError::ConfigError("获取主显示器信息失败".to_string()))?;
+    let scale_factor = monitor.scale_factor();
+    let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
+    let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
+
+    // Step 2: 立即创建蒙版窗口
+    crate::window::create_overlay_window_lazy(app)?;
+    log::info!("[HOTKEY] overlay 窗口创建成功（加载中...）");
+
+    // Step 3: 执行耗时的全屏截图 + JPEG编码
+    let (jpeg_base64, rgba_image) = {
+        let state = app.state::<std::sync::Mutex<crate::capture::CaptureService>>();
+        let locked = state.lock().map_err(|e| AppError::ConfigError(format!("锁定截图服务失败: {}", e)))?;
+        locked.capture_fullscreen_with_cache(None)?
+    };
+
+    // Step 4: 存储截图数据到缓存，前端通过轮询获取
+    {
+        let store = app.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
+        let mut store = store.lock().map_err(|e| AppError::ConfigError(format!("锁定缓存失败: {}", e)))?;
+        store.screen = Some(crate::window::CachedScreen {
+            image: rgba_image,
+            monitor_x,
+            monitor_y,
+            scale_factor,
+        });
+        store.overlay_image = Some(crate::window::OverlayImageData {
+            data: jpeg_base64,
+            mime: "image/jpeg".to_string(),
+        });
+    }
+
+    log::info!("[HOTKEY] 截图完成，图像数据已就绪");
+    Ok(())
+}
+
 fn handle_capture_hotkey(app: &tauri::AppHandle) {
     log::info!("[HOTKEY] 截图快捷键触发");
 
-    let result = (|| -> Result<(), AppError> {
-        let (jpeg_base64, rgba_image) = {
-            let state = app.state::<std::sync::Mutex<crate::capture::CaptureService>>();
-            let locked = state.lock().map_err(|e| AppError::ConfigError(format!("锁定截图服务失败: {}", e)))?;
-            locked.capture_fullscreen_with_cache(None)?
-        };
-
-        let monitor = app.primary_monitor()
-            .ok()
-            .flatten()
-            .ok_or_else(|| AppError::ConfigError("获取主显示器信息失败".to_string()))?;
-        let scale_factor = monitor.scale_factor();
-        let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
-        let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
-
-        {
-            let store = app.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
-            let mut store = store.lock().map_err(|e| AppError::ConfigError(format!("锁定缓存失败: {}", e)))?;
-            store.screen = Some(crate::window::CachedScreen {
-                image: rgba_image,
-                monitor_x,
-                monitor_y,
-                scale_factor,
-            });
-        }
-
-        let overlay_data = crate::window::OverlayImageData {
-            data: jpeg_base64,
-            mime: "image/jpeg".to_string(),
-        };
-
-        crate::window::create_overlay_window(app, &overlay_data)?;
-        log::info!("[HOTKEY] overlay 窗口创建成功");
-        Ok(())
-    })();
+    let result = handle_capture_flow(app);
 
     if let Err(e) = result {
         log::error!("[HOTKEY] 截图快捷键处理失败: {}", e);

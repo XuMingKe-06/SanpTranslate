@@ -16,7 +16,7 @@ Explicitly write out your entire deliberation process, documenting every interme
 
 SnapTranslate 是一款基于 Tauri 2.x 的桌面截屏翻译工具。它能截取屏幕区域、执行 OCR（Tesseract）识别文字并调用 AI 翻译，将译文覆盖在原截图上方，以贴图形式固定在桌面上。
 
-**当前状态：** S3 阶段 — 截图、剪贴板、快捷键、贴图窗口、框选蒙版、托盘菜单、OCR、翻译、设置页面均已实现。历史记录模块仍为桩代码。
+**当前状态：** S4 阶段进行中 — 截图、剪贴板、快捷键、贴图窗口、框选蒙版、托盘菜单、OCR、翻译、设置页面均已实现。历史记录模块为桩代码，国际化文件已创建但内容为空。
 
 ## 开发命令
 
@@ -56,7 +56,7 @@ npm run preview
 | `translate` | `translate/mod.rs`  | **已完成** — OCR 模式翻译：本地 Tesseract 提取文字及坐标 → 调用文本模型 API 翻译 → 合并坐标返回；包含 `translate_image` 入口函数、`call_text_api`（OpenAI 兼容格式）、`TranslatedBlock`/`TranslateResult` 数据结构 |
 | `clipboard` | `clipboard/mod.rs`  | **已完成** — `read_clipboard_image`/`write_clipboard_image`/`write_clipboard_text`，支持 Base64 和原始 RGBA 数据读写图片                                                                                |
 | `hotkey`    | `hotkey/mod.rs`     | **已完成** — `register_hotkeys` 注册全局快捷键（从配置动态解析），支持 Ctrl/Shift/Alt/Super 修饰键 + A-Z/0-9/F1-F12，回调中串联截图或剪贴板操作                                                                                            |
-| `history`   | `history/mod.rs`    | 桩代码 — 将使用 `rusqlite` 进行 SQLite 存储                                                                                                                                                                   |
+| `history`   | `history/mod.rs`    | 桩代码 — 仅有注释 `// 历史模块`，将使用 `rusqlite` 进行 SQLite 存储                                                                                                                                                                   |
 | `config`    | `config/manager.rs` | **已完成** — 基于 TOML 的配置（API URL、模型名称、目标语言、快捷键），从 `app_config_dir/config.toml` 加载，通过临时文件+重命名实现原子写入；支持通过 keyring 管理 API 密钥                                                                                                       |
 | `config`    | `config/mod.rs`     | 重新导出 `AppConfig`、`ConfigManager`、`ShortcutConfig`                                                                                                                                   |
 | `window`    | `window/mod.rs`     | **已完成** — `create_settings_window`/`create_history_window`（单例模式）、`create_overlay_window`（全屏蒙版，将图像数据存入缓存供前端拉取）、`create_pin_window`（UUID 标签，窗口尺寸预留控制栏高度）、`close_pin_window`、`get_pin_image`、`PinImageStore`/`CachedScreenStore`/`CachedScreen`/`OverlayImageData`/`CropResult` 数据结构 |
@@ -81,8 +81,8 @@ npm run preview
 | Pinia | `stores/pinStore.ts`        | 贴图状态管理（`TranslatedBlock`、`PinState` 及贴图实例的 Map）                               |
 | Pinia | `stores/historyStore.ts`    | 历史记录状态（桩代码，S5 阶段实现）                                                                   |
 | 国际化   | `i18n/index.ts`             | `vue-i18n` 配置，自动检测 zh-CN 或 en-US                                              |
-| 国际化   | `i18n/locales/zh-CN.ts`     | 中文语言文件（当前为空对象）                                                                 |
-| 国际化   | `i18n/locales/en-US.ts`     | 英文语言文件（当前为空对象）                                                                 |
+| 国际化   | `i18n/locales/zh-CN.ts`     | 中文语言文件（已创建，当前为空对象）                                                                 |
+| 国际化   | `i18n/locales/en-US.ts`     | 英文语言文件（已创建，当前为空对象）                                                                 |
 | 工具函数  | `utils/tauri.ts`            | **已完成** — Tauri 命令的 TypeScript 绑定（所有十四个命令均已覆盖），包含 `AppConfig`、`CropResult`、`OcrBlock`、`TranslatedBlock`、`TranslateResult` 等接口定义 |
 | 工具函数  | `utils/logger.ts`           | 日志工具，封装 `@tauri-apps/plugin-log`，提供带时间戳和标签的 debug/info/warn/error 结构化日志输出 |
 | 样式    | `styles/variables.css`      | CSS 自定义属性（深色透明主题）                                                             |

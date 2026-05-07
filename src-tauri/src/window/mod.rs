@@ -103,6 +103,8 @@ pub fn create_history_window(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+/// 创建蒙版窗口并存储图像数据（旧流程，兼容外部调用）
+#[allow(dead_code)]
 pub fn create_overlay_window(app: &AppHandle, image_data: &OverlayImageData) -> Result<(), AppError> {
     {
         let store = app.state::<Mutex<CachedScreenStore>>();
@@ -112,6 +114,25 @@ pub fn create_overlay_window(app: &AppHandle, image_data: &OverlayImageData) -> 
         store.overlay_image = Some(image_data.clone());
     }
 
+    create_overlay_window_inner(app)
+}
+
+/// 创建蒙版窗口但不设置图像数据（异步加载截图）
+pub fn create_overlay_window_lazy(app: &AppHandle) -> Result<(), AppError> {
+    // 清除旧的蒙版图像数据
+    {
+        let store = app.state::<Mutex<CachedScreenStore>>();
+        let mut store = store.lock().map_err(|e| {
+            AppError::ConfigError(format!("锁定缓存失败: {}", e))
+        })?;
+        store.overlay_image = None;
+    }
+
+    create_overlay_window_inner(app)
+}
+
+/// 创建蒙版窗口的公共逻辑（不处理图像数据）
+fn create_overlay_window_inner(app: &AppHandle) -> Result<(), AppError> {
     if let Some(existing) = app.get_webview_window("overlay") {
         match existing.destroy() {
             Ok(_) => log::info!("[OVERLAY] 旧 overlay 窗口销毁成功"),
