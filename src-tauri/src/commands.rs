@@ -105,8 +105,9 @@ pub fn capture_region_from_cache(
 
     let result = crate::window::CropResult {
         base64_data,
-        x: logical_x,
-        y: logical_y,
+        // 窗口位置左移/上移一个 PIN_PADDING，配合前端 padding 使图片保持在原始裁剪位置
+        x: logical_x - PIN_PADDING,
+        y: logical_y - PIN_PADDING,
         width: logical_w + PIN_PADDING * 2.0,
         height: logical_h + CONTROL_BAR_H + PIN_PADDING * 2.0,
         crop_width: width,
