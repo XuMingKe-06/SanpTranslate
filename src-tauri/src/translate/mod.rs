@@ -1,11 +1,8 @@
 // 翻译模块
 
 use crate::error::AppError;
-use crate::ocr;
+use crate::ocr::OcrBlock;
 use serde::{Deserialize, Serialize};
-
-/// 默认OCR识别语言（中文简体+英文）
-const DEFAULT_OCR_LANG: &str = "chi_sim+eng";
 
 /// 翻译结果块
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,38 +26,22 @@ pub struct TranslatedBlock {
 pub struct TranslateResult {
     /// 翻译块列表
     pub blocks: Vec<TranslatedBlock>,
+    /// 是否来自历史缓存（未调用API）
+    #[serde(default)]
+    pub from_cache: bool,
 }
 
-/// 翻译图像入口函数，使用OCR模式提取文字并翻译
-pub async fn translate_image(
-    app: &tauri::AppHandle,
-    image_base64: &str,
+/// 使用预先提取的OCR块进行翻译（跳过OCR步骤，避免重复识别）
+pub async fn translate_with_ocr_blocks(
+    ocr_blocks: Vec<OcrBlock>,
     api_base_url: &str,
     api_key: &str,
     model: &str,
     target_language: &str,
-    ocr_lang: Option<&str>,
 ) -> Result<TranslateResult, AppError> {
-    let lang = ocr_lang.unwrap_or(DEFAULT_OCR_LANG);
-    translate_ocr_mode(app, image_base64, api_base_url, api_key, model, target_language, lang).await
-}
-
-/// OCR模式翻译：先本地Tesseract OCR提取文字及坐标，再翻译文本，最后合并坐标
-async fn translate_ocr_mode(
-    app: &tauri::AppHandle,
-    image_base64: &str,
-    api_base_url: &str,
-    api_key: &str,
-    model: &str,
-    target_language: &str,
-    ocr_lang: &str,
-) -> Result<TranslateResult, AppError> {
-    // 调用本地Tesseract OCR提取文字及坐标
-    let ocr_blocks = ocr::extract_text_with_positions(app, image_base64, ocr_lang).await?;
-
     if ocr_blocks.is_empty() {
-        log::info!("[TRANSLATE] OCR未识别到文字，返回空结果");
-        return Ok(TranslateResult { blocks: Vec::new() });
+        log::info!("[TRANSLATE] OCR块为空，返回空结果");
+        return Ok(TranslateResult { blocks: Vec::new(), from_cache: false });
     }
 
     // 拼接所有OCR文字，用空行分隔（每个段落对应一个OCR块）
@@ -70,7 +51,7 @@ async fn translate_ocr_mode(
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    log::debug!("[TRANSLATE] OCR提取文本（{}段落）: {}", ocr_blocks.len(), all_text);
+    log::debug!("[TRANSLATE] 使用预提取OCR文本（{}段落）: {}", ocr_blocks.len(), all_text);
 
     // 调用文本模型翻译，要求按段落返回
     let translated_text = call_text_api(api_base_url, api_key, model, &all_text, target_language).await?;
@@ -97,8 +78,6 @@ async fn translate_ocr_mode(
         .into_iter()
         .enumerate()
         .map(|(i, block)| {
-            // 如果翻译段落数与OCR块数不匹配，缺少的段落用空字符串代替
-            // 避免原文英文混入译文面板
             let translated = if i < translated_paragraphs.len() {
                 translated_paragraphs[i].to_string()
             } else {
@@ -115,8 +94,8 @@ async fn translate_ocr_mode(
         })
         .collect();
 
-    log::info!("[TRANSLATE] OCR模式翻译完成，共 {} 个块", translated_blocks.len());
-    Ok(TranslateResult { blocks: translated_blocks })
+    log::info!("[TRANSLATE] 预提取OCR翻译完成，共 {} 个块", translated_blocks.len());
+    Ok(TranslateResult { blocks: translated_blocks, from_cache: false })
 }
 
 /// 调用文本模型API（OpenAI兼容格式）

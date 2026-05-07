@@ -181,28 +181,68 @@ pub async fn translate_image(
     })?;
     log::info!("[CMD] translate_image: API 密钥读取成功");
 
-    // 调用翻译模块（OCR模式）
-    let result = crate::translate::translate_image(
-        &app,
-        &image_data,
+    // ===== 第一步：OCR 识别文字（同时用于历史缓存匹配和后续翻译） =====
+    log::info!("[CMD] translate_image: 正在进行 OCR 识别...");
+    let ocr_blocks = crate::ocr::extract_text_with_positions(
+        &app, &image_data, "chi_sim+eng"
+    ).await.map_err(|e| format!("OCR识别失败: {}", e))?;
+
+    if ocr_blocks.is_empty() {
+        log::info!("[CMD] OCR未识别到文字，返回空结果");
+        return Ok(crate::translate::TranslateResult { blocks: Vec::new(), from_cache: false });
+    }
+
+    // 拼接 OCR 文本用于历史匹配（使用 \n 以匹配数据库存储格式）
+    let ocr_text = ocr_blocks
+        .iter()
+        .map(|b| b.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    log::info!("[CMD] OCR识别完成，共 {} 个文字块", ocr_blocks.len());
+
+    // ===== 第二步：查找历史缓存 =====
+    {
+        let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+        let service = history_service.lock().map_err(|e| e.to_string())?;
+        if let Some((id, blocks_json)) = service.find_by_ocr_text(&ocr_text, &target_language)
+            .map_err(|e| e.to_string())?
+        {
+            if let Ok(blocks) = serde_json::from_str::<Vec<crate::translate::TranslatedBlock>>(&blocks_json) {
+                log::info!("[CMD] OCR文本匹配历史缓存(id={})，跳过API翻译", id);
+                return Ok(crate::translate::TranslateResult { blocks, from_cache: true });
+            } else {
+                log::warn!("[CMD] 历史缓存 blocks_json 解析失败，重新翻译");
+            }
+        }
+    }
+
+    // ===== 第三步：未命中缓存，调用 API 翻译（使用已有 OCR 结果，避免重复 OCR） =====
+    log::info!("[CMD] translate_image: 未命中缓存，调用翻译 API...");
+    let result = crate::translate::translate_with_ocr_blocks(
+        ocr_blocks,
         &config.api_base_url,
         &api_key,
         &config.model,
         &target_language,
-        None,
     )
     .await
     .map_err(|e| e.to_string())?;
 
-    // 翻译成功后自动保存历史记录（异步，不阻塞返回）
+    // ===== 第四步：保存历史记录（含缓存数据） =====
     if !result.blocks.is_empty() {
         let app_clone = app.clone();
-        let image_data_clone = image_data.clone();
-        let ocr_text = result.blocks.iter().map(|b| b.original.as_str()).collect::<Vec<_>>().join("\n");
+        let image_data_clone = image_data;
+        let ocr_text_clone = ocr_text;
         let translated_text = result.blocks.iter().map(|b| b.translated.as_str()).collect::<Vec<_>>().join("\n");
+        let blocks_json = serde_json::to_string(&result.blocks).map_err(|e| e.to_string())?;
+        let target_language_clone = target_language;
 
         std::thread::spawn(move || {
-            match save_translation_history(&app_clone, &image_data_clone, &ocr_text, &translated_text) {
+            match save_translation_history(
+                &app_clone, &image_data_clone, &ocr_text_clone, &translated_text,
+                &target_language_clone, &blocks_json,
+            ) {
                 Ok(id) => log::info!("[CMD] 翻译历史已保存, id={}", id),
                 Err(e) => log::error!("[CMD] 保存翻译历史失败: {}", e),
             }
@@ -212,12 +252,14 @@ pub async fn translate_image(
     Ok(result)
 }
 
-/// 保存翻译历史记录到数据库
+/// 保存翻译历史记录到数据库（含目标语言和缓存 JSON）
 fn save_translation_history(
     app: &tauri::AppHandle,
     image_base64: &str,
     ocr_text: &str,
     translated_text: &str,
+    target_language: &str,
+    blocks_json: &str,
 ) -> Result<i64, String> {
     // 将 Base64 图像数据解码为原始字节
     let image_bytes = STANDARD.decode(image_base64).map_err(|e| format!("Base64解码失败: {}", e))?;
@@ -229,6 +271,8 @@ fn save_translation_history(
         image_data: image_bytes,
         ocr_text: if ocr_text.is_empty() { None } else { Some(ocr_text.to_string()) },
         translated_text: translated_text.to_string(),
+        target_language: target_language.to_string(),
+        blocks_json: blocks_json.to_string(),
     };
 
     service.add_entry(entry).map_err(|e| e.to_string())

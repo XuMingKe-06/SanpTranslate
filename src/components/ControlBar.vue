@@ -3,7 +3,7 @@
     <!-- idle 或 error 状态：显示 AI 翻译主按钮 -->
     <button
       v-if="translateStatus === 'idle' || translateStatus === 'error'"
-      class="btn btn-primary"
+      class="btn"
       @click="$emit('translate')"
     >
       {{ translateStatus === 'error' ? t('controlBar.retranslate') : t('controlBar.translate') }}
@@ -17,7 +17,7 @@
     <!-- translating 状态：显示禁用的翻译中按钮 -->
     <button
       v-else-if="translateStatus === 'translating'"
-      class="btn btn-primary"
+      class="btn"
       disabled
     >
       {{ t('controlBar.translating') }}
@@ -35,6 +35,9 @@
       <button class="btn" @click="$emit('toggleOriginal')">
         {{ showOriginal ? t('controlBar.showTranslation') : t('controlBar.showOriginal') }}
       </button>
+
+      <!-- 缓存命中提示 -->
+      <span v-if="fromCache" class="cache-hint">{{ t('controlBar.cacheHit') }}</span>
     </template>
   </div>
 </template>
@@ -56,6 +59,8 @@ defineProps<{
   hasTranslation: boolean
   /** 错误信息 */
   errorMessage?: string
+  /** 是否来自历史缓存 */
+  fromCache?: boolean
 }>()
 
 defineEmits<{
@@ -95,13 +100,12 @@ defineEmits<{
   background: #4e4e55;
 }
 
-.btn-primary {
-  background: var(--color-accent);
-  color: #000;
-}
-
-.btn-primary:hover {
-  background: var(--color-accent-hover);
+/* 缓存命中提示 */
+.cache-hint {
+  font-size: 12px;
+  color: #4caf50;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* 错误提示信息 */

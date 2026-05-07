@@ -43,9 +43,9 @@ npm run preview
 
 1. 用户按下全局快捷键（默认 `Ctrl+Alt+L`）→ 截图模块截取屏幕
 2. 截图以透明窗口形式固定在原位置（贴图窗口）
-3. 用户点击"AI 翻译"→ 本地 Tesseract OCR 提取文本及坐标 → 调用 AI API 翻译文本
+3. 用户点击"AI 翻译"→ 本地 Tesseract OCR 提取文本及坐标 → 查找历史缓存（命中则跳过 API）→ 调用 AI API 翻译文本
 4. 译文以标签形式覆盖在原文本位置上
-5. 翻译记录自动保存到本地 SQLite 数据库
+5. 翻译记录自动保存到本地 SQLite 数据库（含缓存数据）
 
 ### Rust 后端（`src-tauri/src/``）
 
@@ -53,10 +53,10 @@ npm run preview
 | ----------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `capture`   | `capture/mod.rs`    | **已完成** — `CaptureService` 封装 xcap，支持全屏截图和区域截图，返回 Base64 PNG/JPEG；包含 `MonitorInfo`、`CaptureRegion`、`CapturedImage` 数据结构；支持缓存截图数据供区域裁剪使用                                                                                  |
 | `ocr`       | `ocr/mod.rs`        | **已完成** — 使用 Tesseract CLI 进行本地文字识别，支持从资源目录或系统 PATH 查找 Tesseract；`extract_text_with_positions` 提取文字及坐标，TSV 解析将词级结果合并为行级块；包含 `OcrBlock` 数据结构（百分比坐标） |
-| `translate` | `translate/mod.rs`  | **已完成** — OCR 模式翻译：本地 Tesseract 提取文字及坐标 → 调用文本模型 API 翻译 → 合并坐标返回；包含 `translate_image` 入口函数、`call_text_api`（OpenAI 兼容格式）、`TranslatedBlock`/`TranslateResult` 数据结构 |
+| `translate` | `translate/mod.rs`  | **已完成** — OCR 模式翻译：本地 Tesseract 提取文字及坐标 → 查找历史缓存（命中则跳过 API）→ 调用文本模型 API 翻译 → 合并坐标返回翻译块；包含 `translate_with_ocr_blocks`（接收预提取 OCR 块）、`call_text_api`（OpenAI 兼容格式）、`TranslatedBlock`/`TranslateResult`（含 `from_cache` 字段）数据结构 |
 | `clipboard` | `clipboard/mod.rs`  | **已完成** — `read_clipboard_image`/`write_clipboard_image`/`write_clipboard_text`，支持 Base64 和原始 RGBA 数据读写图片                                                                                |
 | `hotkey`    | `hotkey/mod.rs`     | **已完成** — `register_hotkeys` 注册全局快捷键（从配置动态解析），支持 Ctrl/Shift/Alt/Super 修饰键 + A-Z/0-9/F1-F12，回调中串联截图或剪贴板操作                                                                                            |
-| `history`   | `history/mod.rs`    | **已完成** — `HistoryService` 管理 SQLite 数据库，支持 CRUD 操作和缩略图生成（最大 200x200 JPEG）；包含 `HistoryEntry`、`HistoryListItem`、`NewHistoryEntry` 数据结构；默认最多 50 条记录，超出自动删除最旧的 |
+| `history`   | `history/mod.rs`    | **已完成** — `HistoryService` 管理 SQLite 数据库，支持 CRUD 操作和缩略图生成（最大 200x200 JPEG）；包含 `HistoryEntry`、`HistoryListItem`、`NewHistoryEntry`（含 `target_language` 和 `blocks_json` 字段）数据结构；新增 `find_by_ocr_text` 方法用于翻译缓存匹配；默认最多 50 条记录，超出自动删除最旧的 |
 | `config`    | `config/manager.rs` | **已完成** — 基于 TOML 的配置（API URL、模型名称、目标语言、快捷键），从 `app_config_dir/config.toml` 加载，通过临时文件+重命名实现原子写入；支持通过 keyring 管理 API 密钥                                                                                                       |
 | `config`    | `config/mod.rs`     | 重新导出 `AppConfig`、`ConfigManager`、`ShortcutConfig`                                                                                                                                   |
 | `window`    | `window/mod.rs`     | **已完成** — `create_settings_window`/`create_history_window`（单例模式）、`create_overlay_window`（全屏蒙版，将图像数据存入缓存供前端拉取）、`create_pin_window`（UUID 标签，窗口尺寸预留控制栏高度）、`close_pin_window`、`get_pin_image`、`PinImageStore`/`CachedScreenStore`/`CachedScreen`/`OverlayImageData`/`CropResult` 数据结构 |
@@ -76,7 +76,7 @@ npm run preview
 | ----- | --------------------------- | ----------------------------------------------------------------------------- |
 | 入口    | `main.ts`                   | 创建 Vue 应用，注册 router/Pinia/i18n                                                |
 | 路由    | `router/index.ts`           | 四个路由：`/overlay`（截图蒙版）、`/pin`（贴图）、`/settings`、`/history`                       |
-| 组件    | `components/ControlBar.vue` | **已完成** — 贴图控制栏组件：根据翻译状态（idle/translating/done/error）显示 AI 翻译按钮、翻译中状态、复制全部/切换原文译文按钮组；支持错误重试 |
+| 组件    | `components/ControlBar.vue` | **已完成** — 贴图控制栏组件：根据翻译状态（idle/translating/done/error）显示 AI 翻译按钮、翻译中状态、复制全部/切换原文译文按钮组；支持错误重试；新增缓存命中提示（`fromCache` prop） |
 | 组件    | `components/HistoryItem.vue` | **已完成** — 历史条目组件：显示缩略图、翻译摘要和时间，支持悬停显示复制/删除操作按钮 |
 | Pinia | `stores/configStore.ts`     | **已完成** — 配置状态管理（通过 `invoke` 与 Rust 后端进行加载/保存），包含 `loadApiKey`/`setApiKey` 方法管理 API 密钥（从 keyring 读取/写入） |
 | Pinia | `stores/pinStore.ts`        | 贴图状态管理（`TranslatedBlock`、`PinState` 及贴图实例的 Map）                               |
@@ -84,7 +84,7 @@ npm run preview
 | 国际化   | `i18n/index.ts`             | `vue-i18n` 配置，自动检测 zh-CN 或 en-US                                              |
 | 国际化   | `i18n/locales/zh-CN.ts`     | **已完成** — 中文语言文件，覆盖通用、控制栏、设置、历史记录、托盘菜单、错误信息等模块                                              |
 | 国际化   | `i18n/locales/en-US.ts`     | **已完成** — 英文语言文件，覆盖通用、控制栏、设置、历史记录、托盘菜单、错误信息等模块                                              |
-| 工具函数  | `utils/tauri.ts`            | **已完成** — Tauri 命令的 TypeScript 绑定（所有十八个命令均已覆盖），包含 `AppConfig`、`CropResult`、`OcrBlock`、`TranslatedBlock`、`TranslateResult`、`HistoryListItem`、`HistoryEntry` 等接口定义 |
+| 工具函数  | `utils/tauri.ts`            | **已完成** — Tauri 命令的 TypeScript 绑定（所有十八个命令均已覆盖），包含 `AppConfig`、`CropResult`、`OcrBlock`、`TranslatedBlock`、`TranslateResult`（含 `from_cache` 字段）、`HistoryListItem`、`HistoryEntry` 等接口定义 |
 | 工具函数  | `utils/logger.ts`           | 日志工具，封装 `@tauri-apps/plugin-log`，提供带时间戳和标签的 debug/info/warn/error 结构化日志输出 |
 | 样式    | `styles/variables.css`      | CSS 自定义属性（深色透明主题）                                                             |
 | 样式    | `styles/global.css`         | 全局重置及基础样式                                                                     |
@@ -101,7 +101,7 @@ npm run preview
 
 - **蒙版窗口流程：** `lib.rs` setup → 快捷键/托盘回调 → `capture::capture_fullscreen_with_cache()` → 缓存全屏截图到 `CachedScreenStore.screen` → `window::create_overlay_window()` → 后端将 JPEG 图像数据存入 `CachedScreenStore.overlay_image` → OverlayView 调用 `get_overlay_image` 命令拉取数据 → 绘制截图 → 用户框选 → `capture_region_from_cache` 命令 → 返回 `CropResult`（含图像和位置信息）→ `store_pin_image` 存储图像 → 创建贴图窗口
 - **贴图窗口流程：** `create_pin_window()` 创建 WebviewWindow → PinView 调用 `get_pin_image` 命令从 `PinImageStore` 拉取图像数据 → 显示图片 + ControlBar
-- **翻译流程：** 用户点击"AI 翻译"按钮 → PinView 调用 `get_config` 获取目标语言 → 调用 `translate_image` 命令 → 后端执行 Tesseract OCR 提取文字及坐标 → 调用文本模型 API 翻译 → 返回 `TranslateResult`（包含 `TranslatedBlock[]`）→ 前端渲染翻译覆盖层 → 后端异步保存历史记录
+- **翻译流程：** 用户点击"AI 翻译"按钮 → PinView 调用 `get_config` 获取目标语言 → 调用 `translate_image` 命令 → 后端执行 Tesseract OCR 提取文字及坐标 → 查找历史缓存（命中则直接返回）→ 未命中则调用文本模型 API 翻译 → 返回 `TranslateResult`（包含 `TranslatedBlock[]` 和 `from_cache` 标志）→ 前端渲染翻译覆盖层 → 后端异步保存历史记录（含 `target_language` 和 `blocks_json`）
 - **历史记录流程：** 翻译完成 → 后端自动保存到 SQLite → 用户点击托盘"历史" → 前端调用 `get_history_list` → HistoryView 展示列表
 
 ### AppConfig 结构（Rust）
@@ -123,7 +123,8 @@ pub struct ShortcutConfig {
 ### 关键设计决策
 
 - **配置存储：** TOML 文件存储在磁盘上，API 密钥通过操作系统凭据管理器（`keyring` crate）保存 — 不写入配置文件
-- **翻译流程：** 本地 Tesseract OCR 提取文字及坐标 → 拼接文本调用 AI API 翻译 → 按行匹配坐标返回翻译块
+- **翻译流程：** 本地 Tesseract OCR 提取文字及坐标 → 查找历史缓存（根据 OCR 文本和目标语言匹配）→ 未命中则调用 AI API 翻译 → 按行匹配坐标返回翻译块
+- **翻译缓存：** 历史记录存储 `target_language` 和 `blocks_json` 字段，用于缓存匹配；命中缓存时直接返回翻译结果，跳过 API 调用
 - **Tesseract 资源：** 项目捆绑 Tesseract 可执行文件和语言数据（`src-tauri/resources/tesseract/`），包含中文简体（`chi_sim.traineddata`）和英文（`eng.traineddata`）训练数据，以及 Windows DLL 依赖；OCR 模块优先从资源目录查找，开发模式下回退到系统 PATH
 - **贴图窗口：** 每张贴图截图都是一个独立的透明 Tauri Webview 窗口，定位在原始截取坐标处，窗口尺寸 = 图片尺寸 + 14px 内边距 + 36px 控制栏高度
 - **图像缓存：** 全屏截图缓存于 `CachedScreenStore`（含 `screen` 和 `overlay_image`），贴图图像缓存于 `PinImageStore`，前端通过命令主动拉取而非 Event 推送
@@ -131,4 +132,4 @@ pub struct ShortcutConfig {
 - **窗口管理：** 设置和历史记录窗口为单例（如果已打开则复用现有窗口）；蒙版窗口为单例（打开前先关闭已有实例）；贴图窗口每次创建新实例（UUID 标签）
 - **UI 框架：** Naive UI 已在设置页面和历史页面中使用，采用深色主题配合 `createDiscreteApi` 创建独立的 message 实例
 - **日志系统：** 使用 `tauri-plugin-log`，输出到 Stdout、Webview 控制台和日志文件目录
-- **历史记录：** SQLite 数据库存储在 `{app_data_dir}/data/history.db`，最多保存 50 条记录，缩略图最大 200x200 JPEG 格式
+- **历史记录：** SQLite 数据库存储在 `{app_data_dir}/data/history.db`，最多保存 50 条记录，缩略图最大 200x200 JPEG 格式；数据库包含 `target_language` 和 `blocks_json` 列用于翻译缓存

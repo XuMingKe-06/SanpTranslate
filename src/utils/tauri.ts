@@ -72,6 +72,8 @@ export interface TranslatedBlock {
 export interface TranslateResult {
   /** 翻译块列表 */
   blocks: TranslatedBlock[]
+  /** 是否来自历史缓存（未调用API） */
+  from_cache: boolean
 }
 
 /** 历史记录列表条目 */

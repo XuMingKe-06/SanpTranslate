@@ -53,6 +53,10 @@ pub struct NewHistoryEntry {
     pub ocr_text: Option<String>,
     /// 翻译后文本
     pub translated_text: String,
+    /// 目标语言（用于翻译缓存匹配）
+    pub target_language: String,
+    /// 翻译块 JSON 序列化（用于直接恢复翻译结果，无需重新调用API）
+    pub blocks_json: String,
 }
 
 /// 历史记录服务，封装 SQLite 数据库操作
@@ -78,14 +82,18 @@ impl HistoryService {
                 thumbnail BLOB NOT NULL,
                 ocr_text TEXT,
                 translated_text TEXT NOT NULL,
+                target_language TEXT DEFAULT '',
+                blocks_json TEXT DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
             CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at DESC);"
         )?;
 
-        // 兼容旧数据库：若缺少 image_blob 列则添加（SQLite ALTER TABLE 不支持 IF NOT EXISTS）
+        // 兼容旧数据库：若缺少某列则添加（SQLite ALTER TABLE 不支持 IF NOT EXISTS）
         let _ = db.execute("ALTER TABLE history ADD COLUMN image_blob BLOB", []);
+        let _ = db.execute("ALTER TABLE history ADD COLUMN target_language TEXT DEFAULT ''", []);
+        let _ = db.execute("ALTER TABLE history ADD COLUMN blocks_json TEXT DEFAULT ''", []);
 
         log::info!("[HISTORY] 数据库初始化完成: {:?}", db_path);
 
@@ -104,8 +112,8 @@ impl HistoryService {
 
         // 插入记录
         self.db.execute(
-            "INSERT INTO history (image_blob, thumbnail, ocr_text, translated_text, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![image_base64, thumbnail_bytes, entry.ocr_text, entry.translated_text, created_at],
+            "INSERT INTO history (image_blob, thumbnail, ocr_text, translated_text, target_language, blocks_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![image_base64, thumbnail_bytes, entry.ocr_text, entry.translated_text, entry.target_language, entry.blocks_json, created_at],
         )?;
 
         let id = self.db.last_insert_rowid();
@@ -177,6 +185,29 @@ impl HistoryService {
         })?;
 
         Ok(entry)
+    }
+
+    /// 根据 OCR 文本和目标语言查找翻译缓存
+    /// 用于避免对相同内容的截图重复调用翻译 API
+    pub fn find_by_ocr_text(&self, ocr_text: &str, target_language: &str) -> Result<Option<(i64, String)>, AppError> {
+        let mut stmt = self.db.prepare(
+            "SELECT id, blocks_json FROM history \
+             WHERE ocr_text = ?1 AND target_language = ?2 \
+             AND blocks_json IS NOT NULL AND blocks_json != '' \
+             ORDER BY created_at DESC LIMIT 1"
+        )?;
+
+        let result = stmt.query_row(params![ocr_text, target_language], |row| {
+            let id: i64 = row.get(0)?;
+            let blocks_json: String = row.get(1)?;
+            Ok((id, blocks_json))
+        });
+
+        match result {
+            Ok(entry) => Ok(Some(entry)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::DatabaseError(e.to_string())),
+        }
     }
 
     /// 删除单条历史记录

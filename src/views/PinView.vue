@@ -37,6 +37,7 @@
       :show-original="showOriginal"
       :has-translation="hasTranslation"
       :error-message="errorMessage"
+      :from-cache="fromCache"
       @translate="onTranslate"
       @copy-original="onCopyOriginal"
       @copy-translation="onCopyTranslation"
@@ -77,6 +78,7 @@ const hasTranslation = ref(false)
 // 翻译相关状态
 const translatedBlocks = ref<TranslatedBlock[]>([])
 const errorMessage = ref<string>('')
+const fromCache = ref(false)
 
 // 过滤掉空翻译的块，避免在译文面板中显示空白项
 const filteredBlocks = computed(() =>
@@ -350,6 +352,9 @@ async function onTranslate() {
     translatedBlocks.value = result.blocks
     hasTranslation.value = true
     translateStatus.value = 'done'
+
+    // 记录是否来自历史缓存
+    fromCache.value = result.from_cache
 
     logger.info(TAG, `翻译完成，共 ${translatedBlocks.value.length} 个翻译块`)
 

@@ -21,6 +21,7 @@ export default {
     copyOriginal: '复制原文',
     showOriginal: '显示原文',
     showTranslation: '显示译文',
+    cacheHit: '已从历史缓存获取',
   },
 
   // 截图蒙版

@@ -4,6 +4,7 @@
 
 | 文档版本 | 修订日期   | 作者   | 变更说明         |
 |----------|------------|--------|------------------|
+| V1.4     | 2026-05-08 | XuMingKe | 新增翻译缓存机制，优化数据库结构 |
 | V1.3     | 2026-05-07 | XuMingKe | 完成历史记录模块；移除"翻译最近一张贴图"功能 |
 | V1.2     | 2026-05-05 | XuMingKe | 合并翻译模式，统一使用 OCR 翻译流程 |
 | V1.1     | 2026-05-02 | XuMingKe | 截图蒙版支持右键取消；贴图控制栏去除半透明背景 |
@@ -317,7 +318,7 @@ impl SecureKeyStore {
 
 #### 2.5.1 模块职责
 
-管理翻译历史的 CRUD 操作，生成缩略图。
+管理翻译历史的 CRUD 操作，生成缩略图，提供翻译缓存匹配功能。
 
 #### 2.5.2 核心结构体与函数
 
@@ -340,12 +341,16 @@ impl HistoryService {
     pub fn clear_all(&self) -> Result<(), AppError>;
 
     pub fn count(&self) -> Result<u32, AppError>;
+
+    pub fn find_by_ocr_text(&self, ocr_text: &str, target_language: &str) -> Result<Option<(i64, String)>, AppError>;
 }
 
 pub struct NewHistoryEntry {
     pub image_data: Vec<u8>,
     pub ocr_text: Option<String>,
     pub translated_text: String,
+    pub target_language: String,
+    pub blocks_json: String,
 }
 ```
 
@@ -357,20 +362,36 @@ pub struct NewHistoryEntry {
 3. 将缩略图编码为 JPEG（quality=80）以节省空间
 4. 获取当前时间戳（ISO 8601 格式）
 5. 执行 INSERT SQL：
-   INSERT INTO history (thumbnail, ocr_text, translated_text, created_at)
-   VALUES (?1, ?2, ?3, ?4)
+   INSERT INTO history (image_blob, thumbnail, ocr_text, translated_text, target_language, blocks_json, created_at)
+   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
 6. 返回新记录 ID
 7. 检查总记录数，若超过 max_history（默认50），删除最旧的记录
 ```
 
-#### 2.5.4 数据库初始化
+#### 2.5.4 find_by_ocr_text 算法
+
+```
+1. 构造查询 SQL：
+   SELECT id, blocks_json FROM history 
+   WHERE ocr_text = ?1 AND target_language = ?2 
+   AND blocks_json IS NOT NULL AND blocks_json != '' 
+   ORDER BY created_at DESC LIMIT 1
+2. 执行查询
+3. 若找到记录，返回 Some((id, blocks_json))
+4. 若未找到，返回 None
+```
+
+#### 2.5.5 数据库初始化
 
 ```sql
 CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_blob BLOB NOT NULL,
     thumbnail BLOB NOT NULL,
     ocr_text TEXT,
     translated_text TEXT NOT NULL,
+    target_language TEXT DEFAULT '',
+    blocks_json TEXT DEFAULT '',
     created_at TEXT NOT NULL
 );
 
