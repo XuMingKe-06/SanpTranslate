@@ -2,7 +2,7 @@ use crate::config::ShortcutConfig;
 use crate::error::AppError;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::AppHandle;
@@ -24,13 +24,6 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
         None::<&str>,
     )?;
     let separator1 = PredefinedMenuItem::separator(app)?;
-    let translate_recent_item = MenuItem::with_id(
-        app,
-        "translate_recent",
-        "翻译最近一张贴图",
-        true,
-        None::<&str>,
-    )?;
     let history_item = MenuItem::with_id(app, "history", "截图与翻译历史", true, None::<&str>)?;
     let separator2 = PredefinedMenuItem::separator(app)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
@@ -42,7 +35,6 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
             &capture_item,
             &pin_clipboard_item,
             &separator1,
-            &translate_recent_item,
             &history_item,
             &separator2,
             &settings_item,
@@ -96,18 +88,6 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
                 })() {
                     Ok(_) => {}
                     Err(e) => log::error!("剪贴板贴图失败: {}", e),
-                }
-            }
-            "translate_recent" => {
-                // 查找最近的贴图窗口并发送翻译事件
-                let pin_windows: Vec<String> = app.webview_windows()
-                    .keys()
-                    .filter(|k| k.starts_with("pin-"))
-                    .cloned()
-                    .collect();
-
-                if let Some(label) = pin_windows.last() {
-                    let _ = app.emit_to(label, "trigger-translate", ());
                 }
             }
             "history" => {

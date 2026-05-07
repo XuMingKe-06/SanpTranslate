@@ -45,10 +45,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { LogicalSize } from '@tauri-apps/api/dpi'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {
   getPinImage,
   getConfig,
@@ -100,7 +99,6 @@ const imageArea = ref<HTMLElement | null>(null)
 let mouseDownX = 0
 let mouseDownY = 0
 let hasStartedDrag = false
-let unlistenTranslate: UnlistenFn | null = null
 
 /** HTML 转义，防止译文内容中出现 HTML 标签破坏布局 */
 function escapeHtml(text: string): string {
@@ -282,13 +280,6 @@ onMounted(async () => {
   } catch (err) {
     logger.error(TAG, `getPinImage 调用失败: ${err}`, err)
   }
-
-  // 监听托盘"翻译最近一张贴图"事件
-  unlistenTranslate = await listen('trigger-translate', () => {
-    if (translateStatus.value === 'idle' || translateStatus.value === 'error') {
-      onTranslate()
-    }
-  })
 })
 
 function onMouseDown(e: MouseEvent) {
@@ -394,13 +385,6 @@ async function onToggleOriginal() {
   await nextTick()
   await updateWindowSize(!showOriginal.value)
 }
-
-onUnmounted(() => {
-  if (unlistenTranslate) {
-    unlistenTranslate()
-    unlistenTranslate = null
-  }
-})
 </script>
 
 <style scoped>

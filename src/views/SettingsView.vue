@@ -4,23 +4,23 @@
       <n-spin :show="loading">
         <n-space vertical :size="16">
           <!-- API 配置区域 -->
-          <n-card title="API 配置" size="small">
+          <n-card :title="t('settings.apiConfig')" size="small">
             <n-form label-placement="left" label-width="100" :show-feedback="false">
-              <n-form-item label="API 地址">
+              <n-form-item :label="t('settings.apiBaseUrl')">
                 <n-input
                   v-model:value="formData.api_base_url"
                   placeholder="https://api.openai.com"
                 />
               </n-form-item>
-              <n-form-item label="API 密钥">
+              <n-form-item :label="t('settings.apiKey')">
                 <n-input
                   v-model:value="formData.api_key"
                   type="password"
                   show-password-on="click"
-                  :placeholder="hasApiKey ? '••••••••' : '请输入 API 密钥'"
+                  :placeholder="hasApiKey ? '••••••••' : t('settings.apiKeyPlaceholder')"
                 />
               </n-form-item>
-              <n-form-item label="模型">
+              <n-form-item :label="t('settings.model')">
                 <n-input
                   v-model:value="formData.model"
                   placeholder="gpt-4o"
@@ -30,9 +30,9 @@
           </n-card>
 
           <!-- 翻译配置区域 -->
-          <n-card title="翻译配置" size="small">
+          <n-card :title="t('settings.translateConfig')" size="small">
             <n-form label-placement="left" label-width="100" :show-feedback="false">
-              <n-form-item label="目标语言">
+              <n-form-item :label="t('settings.targetLanguage')">
                 <n-select
                   v-model:value="formData.target_language"
                   :options="languageOptions"
@@ -42,15 +42,15 @@
           </n-card>
 
           <!-- 快捷键配置区域 -->
-          <n-card title="快捷键配置" size="small">
+          <n-card :title="t('settings.shortcutConfig')" size="small">
             <n-form label-placement="left" label-width="100" :show-feedback="false">
-              <n-form-item label="截图快捷键">
+              <n-form-item :label="t('settings.captureShortcut')">
                 <n-input
                   v-model:value="formData.shortcuts_capture"
                   placeholder="Ctrl+Alt+L"
                 />
               </n-form-item>
-              <n-form-item label="剪贴板贴图">
+              <n-form-item :label="t('settings.pinClipboardShortcut')">
                 <n-input
                   v-model:value="formData.shortcuts_pin_clipboard"
                   placeholder="Ctrl+Alt+P"
@@ -62,10 +62,10 @@
           <!-- 操作按钮 -->
           <n-space justify="center">
             <n-button type="primary" @click="onSave" :loading="saving">
-              保存
+              {{ t('settings.save') }}
             </n-button>
             <n-button @click="onTestConnection" :loading="testing">
-              测试连接
+              {{ t('settings.testConnection') }}
             </n-button>
           </n-space>
         </n-space>
@@ -76,6 +76,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   darkTheme,
   NConfigProvider,
@@ -94,6 +95,7 @@ import { testApiConnection, type AppConfig } from '@/utils/tauri'
 import { logger } from '@/utils/logger'
 
 const TAG = 'SettingsView'
+const { t } = useI18n()
 
 // 创建独立的 message 实例，配合深色主题（无需 NMessageProvider 包裹）
 const { message } = createDiscreteApi(['message'], {
@@ -122,18 +124,18 @@ const testing = ref(false)
 // 是否已有 API 密钥（从 keyring 读取）
 const hasApiKey = computed(() => !!configStore.apiKey)
 
-// 目标语言选项列表
-const languageOptions = [
-  { label: '中文简体', value: 'zh-CN' },
-  { label: '中文繁体', value: 'zh-TW' },
-  { label: '英语', value: 'en' },
-  { label: '日语', value: 'ja' },
-  { label: '韩语', value: 'ko' },
-  { label: '法语', value: 'fr' },
-  { label: '德语', value: 'de' },
-  { label: '西班牙语', value: 'es' },
-  { label: '俄语', value: 'ru' },
-]
+// 目标语言选项列表（使用 i18n 标签，支持语言切换）
+const languageOptions = computed(() => [
+  { label: t('settings.langZhCN'), value: 'zh-CN' },
+  { label: t('settings.langZhTW'), value: 'zh-TW' },
+  { label: t('settings.langEn'), value: 'en' },
+  { label: t('settings.langJa'), value: 'ja' },
+  { label: t('settings.langKo'), value: 'ko' },
+  { label: t('settings.langFr'), value: 'fr' },
+  { label: t('settings.langDe'), value: 'de' },
+  { label: t('settings.langEs'), value: 'es' },
+  { label: t('settings.langRu'), value: 'ru' },
+])
 
 /** 将后端配置填充到表单 */
 function populateForm(config: AppConfig) {
@@ -170,10 +172,10 @@ async function onSave() {
       formData.api_key = ''
     }
 
-    message.success('配置已保存')
+    message.success(t('settings.configSaved'))
     logger.info(TAG, '配置保存成功')
   } catch (err) {
-    message.error(`保存失败: ${err}`)
+    message.error(`${t('settings.saveFailed')}: ${err}`)
     logger.error(TAG, `配置保存失败: ${err}`)
   } finally {
     saving.value = false
@@ -183,18 +185,18 @@ async function onSave() {
 /** 测试 API 连接 */
 async function onTestConnection() {
   if (!formData.api_base_url.trim()) {
-    message.warning('请先填写 API 地址')
+    message.warning(t('settings.fillApiUrl'))
     return
   }
   if (!formData.model.trim()) {
-    message.warning('请先填写模型名称')
+    message.warning(t('settings.fillModel'))
     return
   }
 
   // 优先使用表单中输入的密钥，否则使用已存储的密钥
   const apiKey = formData.api_key.trim() || configStore.apiKey || ''
   if (!apiKey) {
-    message.warning('请先配置 API 密钥')
+    message.warning(t('settings.fillApiKey'))
     return
   }
 
@@ -233,7 +235,7 @@ onMounted(async () => {
     }
     logger.info(TAG, '设置页面初始化完成')
   } catch (err) {
-    message.error(`加载配置失败: ${err}`)
+    message.error(`${t('settings.loadFailed')}: ${err}`)
     logger.error(TAG, `加载配置失败: ${err}`)
   } finally {
     loading.value = false

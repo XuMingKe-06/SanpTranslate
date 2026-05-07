@@ -10,7 +10,7 @@
 - **本地 OCR**：内置 Tesseract 离线文字识别，提取文本及精确坐标
 - **AI 翻译**：调用自备大模型 API 翻译，本地 OCR 提取文字后翻译
 - **译文覆盖**：译文标签精确覆盖原文位置
-- **翻译历史**：自动记录翻译历史，支持查看、复制、删除
+- **翻译历史**：自动记录翻译历史，支持查看、复制、删除，最多保存 50 条
 - **隐私安全**：截图完全本地处理，仅与用户配置的 API 通信，无遥测
 
 ## 技术栈
@@ -22,7 +22,7 @@
 | UI 组件      | Naive UI                       |
 | 后端         | Rust                           |
 | 屏幕截图     | xcap                           |
-| OCR          | Tesseract (via leptess)        |
+| OCR          | Tesseract CLI                  |
 | 数据库       | SQLite (via rusqlite)          |
 | 安全存储     | keyring                        |
 | HTTP 客户端  | reqwest                        |
@@ -73,9 +73,20 @@ npm run tauri build
 SnapTranslate/
   |-- src/                    # 前端源码 (Vue 3 + TypeScript)
   |     |-- components/       # Vue 组件
+  |     |     |-- ControlBar.vue    # 贴图控制栏
+  |     |     |-- HistoryItem.vue   # 历史条目
   |     |-- views/            # 页面视图
+  |     |     |-- OverlayView.vue   # 截图蒙版
+  |     |     |-- PinView.vue       # 贴图窗口
+  |     |     |-- SettingsView.vue  # 设置页面
+  |     |     |-- HistoryView.vue   # 历史面板
   |     |-- stores/           # Pinia 状态管理
+  |     |     |-- configStore.ts    # 配置状态
+  |     |     |-- pinStore.ts       # 贴图状态
+  |     |     |-- historyStore.ts   # 历史状态
   |     |-- i18n/             # 国际化语言包
+  |     |     |-- locales/zh-CN.ts  # 中文
+  |     |     |-- locales/en-US.ts  # 英文
   |     |-- styles/           # 全局样式
   |     |-- utils/            # 工具函数
   |-- src-tauri/              # Rust 后端源码
@@ -89,8 +100,12 @@ SnapTranslate/
   |     |     |-- hotkey/     # 快捷键模块
   |     |     |-- tray/       # 托盘模块
   |     |     |-- window/     # 窗口管理模块
+  |     |     |-- commands.rs # Tauri 命令（18 个）
+  |     |     |-- error.rs    # 统一错误类型
+  |     |     |-- lib.rs      # 应用入口
+  |     |     |-- main.rs     # main 函数
+  |     |-- resources/tesseract/ # Tesseract OCR 资源
   |-- docs/                   # 项目文档
-  |-- tests/                  # 测试代码
 ```
 
 ## 使用说明
@@ -99,7 +114,8 @@ SnapTranslate/
 2. 右键托盘图标 -> "设置"，配置大模型 API 地址和密钥
 3. 按 `Ctrl+Alt+L` 框选截图，截图自动贴在原位
 4. 点击贴图下方"AI翻译"按钮进行翻译
-5. 按 `Ctrl+Alt+P` 可将剪贴板中的图片贴到桌面
+5. 翻译完成后自动保存历史记录
+6. 按 `Ctrl+Alt+P` 可将剪贴板中的图片贴到桌面
 
 ## 配置说明
 
@@ -109,6 +125,11 @@ SnapTranslate/
 - Linux: `~/.config/SnapTranslate/config/config.toml`
 
 API 密钥通过操作系统凭据管理器安全存储，不保存在配置文件中。
+
+历史记录数据库位于：
+- Windows: `%APPDATA%/SnapTranslate/data/history.db`
+- macOS: `~/Library/Application Support/SnapTranslate/data/history.db`
+- Linux: `~/.local/share/SnapTranslate/data/history.db`
 
 ## 文档
 

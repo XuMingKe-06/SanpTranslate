@@ -74,6 +74,32 @@ export interface TranslateResult {
   blocks: TranslatedBlock[]
 }
 
+/** 历史记录列表条目 */
+export interface HistoryListItem {
+  /** 记录 ID */
+  id: number
+  /** 缩略图数据（Base64 编码的 JPEG） */
+  thumbnail: string
+  /** 翻译摘要 */
+  summary: string
+  /** 创建时间（ISO 8601 格式） */
+  created_at: string
+}
+
+/** 历史记录详情条目 */
+export interface HistoryEntry {
+  /** 记录 ID */
+  id: number
+  /** 缩略图数据（Base64 编码的 JPEG） */
+  thumbnail: string
+  /** OCR 识别原文 */
+  ocr_text: string | null
+  /** 翻译后文本 */
+  translated_text: string
+  /** 创建时间（ISO 8601 格式） */
+  created_at: string
+}
+
 export async function getConfig(): Promise<AppConfig> {
   return invoke<AppConfig>('get_config')
 }
@@ -142,4 +168,24 @@ export async function testApiConnection(
   model: string
 ): Promise<string> {
   return invoke<string>('test_api_connection', { apiBaseUrl, apiKey, model })
+}
+
+/** 获取历史记录列表 */
+export async function getHistoryList(limit: number = 50): Promise<HistoryListItem[]> {
+  return invoke<HistoryListItem[]>('get_history_list', { limit })
+}
+
+/** 获取历史记录详情 */
+export async function getHistoryDetail(id: number): Promise<HistoryEntry> {
+  return invoke<HistoryEntry>('get_history_detail', { id })
+}
+
+/** 删除指定历史记录 */
+export async function deleteHistory(id: number): Promise<boolean> {
+  return invoke<boolean>('delete_history', { id })
+}
+
+/** 清空所有历史记录 */
+export async function clearHistory(): Promise<boolean> {
+  return invoke<boolean>('clear_history')
 }

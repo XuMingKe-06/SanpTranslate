@@ -6,7 +6,7 @@
       class="btn btn-primary"
       @click="$emit('translate')"
     >
-      {{ translateStatus === 'error' ? '重新翻译' : 'AI翻译' }}
+      {{ translateStatus === 'error' ? t('controlBar.retranslate') : t('controlBar.translate') }}
     </button>
 
     <!-- error 状态：显示错误提示信息 -->
@@ -20,23 +20,27 @@
       class="btn btn-primary"
       disabled
     >
-      翻译中...
+      {{ t('controlBar.translating') }}
     </button>
 
     <!-- done 状态：显示操作按钮组 -->
     <template v-else-if="translateStatus === 'done'">
       <!-- 复制全部 -->
-      <button class="btn" @click="$emit('copyAll')">复制全部</button>
+      <button class="btn" @click="$emit('copyAll')">{{ t('controlBar.copyAll') }}</button>
 
       <!-- 原文/译文切换 -->
       <button class="btn" @click="$emit('toggleOriginal')">
-        {{ showOriginal ? '显示译文' : '显示原文' }}
+        {{ showOriginal ? t('controlBar.showTranslation') : t('controlBar.showOriginal') }}
       </button>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 /** 翻译状态类型 */
 type TranslateStatus = 'idle' | 'translating' | 'done' | 'error'
 

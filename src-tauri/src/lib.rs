@@ -42,7 +42,11 @@ pub fn run() {
             commands::translate_image,
             commands::get_api_key,
             commands::set_api_key,
-            commands::test_api_connection
+            commands::test_api_connection,
+            commands::get_history_list,
+            commands::get_history_detail,
+            commands::delete_history,
+            commands::clear_history
         ])
         .setup(|app| {
             let config_manager = config::ConfigManager::new(app.handle())?;
@@ -54,7 +58,21 @@ pub fn run() {
                     log::error!("初始化截图服务失败: {}", e);
                     e
                 })?;
-            app.manage(std::sync::Mutex::new(capture_service));
+            app.manage(Mutex::new(capture_service));
+
+            // 初始化历史记录服务（SQLite 数据库）
+            let data_dir = app.path().app_data_dir()
+                .map_err(|e| {
+                    log::error!("获取应用数据目录失败: {}", e);
+                    error::AppError::ConfigError(format!("获取应用数据目录失败: {}", e))
+                })?;
+            let db_path = data_dir.join("data").join("history.db");
+            let history_service = history::HistoryService::new(&db_path)
+                .map_err(|e| {
+                    log::error!("初始化历史记录服务失败: {}", e);
+                    e
+                })?;
+            app.manage(Mutex::new(history_service));
 
             tray::create_tray(app.handle(), &app_config.shortcuts)?;
 

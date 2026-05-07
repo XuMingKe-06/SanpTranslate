@@ -1,1 +1,111 @@
-export default {};
+export default {
+  // 通用
+  common: {
+    confirm: '确认',
+    cancel: '取消',
+    delete: '删除',
+    copy: '复制',
+    close: '关闭',
+    save: '保存',
+    loading: '加载中...',
+    success: '操作成功',
+    error: '操作失败',
+  },
+
+  // 控制栏
+  controlBar: {
+    translate: 'AI翻译',
+    retranslate: '重新翻译',
+    translating: '翻译中...',
+    copyAll: '复制全部',
+    showOriginal: '显示原文',
+    showTranslation: '显示译文',
+  },
+
+  // 截图蒙版
+  overlay: {
+    title: 'SnapTranslate - 截图蒙版',
+  },
+
+  // 贴图窗口
+  pin: {
+    title: 'SnapTranslate - 贴图',
+  },
+
+  // 设置页面
+  settings: {
+    title: '设置',
+    apiConfig: 'API 配置',
+    apiBaseUrl: 'API 地址',
+    apiKey: 'API 密钥',
+    apiKeyPlaceholder: '请输入 API 密钥',
+    apiKeyHidden: '密钥已保存',
+    model: '模型',
+    translateConfig: '翻译配置',
+    targetLanguage: '目标语言',
+    shortcutConfig: '快捷键配置',
+    captureShortcut: '截图快捷键',
+    pinClipboardShortcut: '剪贴板贴图',
+    save: '保存',
+    testConnection: '测试连接',
+    configSaved: '配置已保存',
+    saveFailed: '保存失败',
+    loadFailed: '加载配置失败',
+    fillApiUrl: '请先填写 API 地址',
+    fillModel: '请先填写模型名称',
+    fillApiKey: '请先配置 API 密钥',
+    connectionSuccess: '连接成功',
+    connectionFailed: '连接失败',
+    // 目标语言选项
+    langZhCN: '中文简体',
+    langZhTW: '中文繁体',
+    langEn: '英语',
+    langJa: '日语',
+    langKo: '韩语',
+    langFr: '法语',
+    langDe: '德语',
+    langEs: '西班牙语',
+    langRu: '俄语',
+  },
+
+  // 历史记录
+  history: {
+    title: '历史记录',
+    clearAll: '清空全部',
+    empty: '暂无翻译历史',
+    detail: '翻译详情',
+    original: '原文',
+    translation: '译文',
+    copyTranslation: '复制译文',
+    confirmDelete: '确定要删除这条翻译记录吗？',
+    confirmClearAll: '确定要清空所有翻译历史吗？此操作不可撤销。',
+    deleted: '已删除',
+    cleared: '已清空所有历史记录',
+    deleteFailed: '删除失败',
+    clearFailed: '清空失败',
+    loadFailed: '加载历史记录失败',
+    detailLoadFailed: '加载详情失败',
+    copySuccess: '已复制到剪贴板',
+    copyFailed: '复制失败',
+  },
+
+  // 托盘菜单
+  tray: {
+    captureTranslate: '框选截图翻译',
+    pinFromClipboard: '从剪贴板贴图',
+    history: '截图与翻译历史',
+    settings: '设置',
+    quit: '退出',
+  },
+
+  // 错误信息
+  error: {
+    apiKeyNotConfigured: 'API 密钥未配置，请在设置中配置 API 密钥',
+    apiKeyInvalid: 'API 密钥无效或已过期',
+    apiKeyNoPermission: '无权访问该 API，请检查密钥权限',
+    apiUrlNotFound: 'API 地址不存在，请检查地址是否正确',
+    rateLimited: '请求过于频繁，请稍后再试',
+    serverError: '服务器错误，请稍后再试',
+    noCachedScreenshot: '缓存中无全屏截图数据，请重新截图',
+  },
+}

@@ -100,7 +100,7 @@ pub fn capture_region_from_cache(
     let logical_h = height as f64 / scale_factor;
 
     // 阴影内边距和控制栏高度，需与前端 PinView.vue 保持一致
-    const PIN_PADDING: f64 = 4.0;
+    const PIN_PADDING: f64 = 14.0;
     const CONTROL_BAR_H: f64 = 36.0;
 
     let result = crate::window::CropResult {
@@ -181,7 +181,7 @@ pub async fn translate_image(
     log::info!("[CMD] translate_image: API 密钥读取成功");
 
     // 调用翻译模块（OCR模式）
-    crate::translate::translate_image(
+    let result = crate::translate::translate_image(
         &app,
         &image_data,
         &config.api_base_url,
@@ -191,7 +191,46 @@ pub async fn translate_image(
         None,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    // 翻译成功后自动保存历史记录（异步，不阻塞返回）
+    if !result.blocks.is_empty() {
+        let app_clone = app.clone();
+        let image_data_clone = image_data.clone();
+        let ocr_text = result.blocks.iter().map(|b| b.original.as_str()).collect::<Vec<_>>().join("\n");
+        let translated_text = result.blocks.iter().map(|b| b.translated.as_str()).collect::<Vec<_>>().join("\n");
+
+        std::thread::spawn(move || {
+            match save_translation_history(&app_clone, &image_data_clone, &ocr_text, &translated_text) {
+                Ok(id) => log::info!("[CMD] 翻译历史已保存, id={}", id),
+                Err(e) => log::error!("[CMD] 保存翻译历史失败: {}", e),
+            }
+        });
+    }
+
+    Ok(result)
+}
+
+/// 保存翻译历史记录到数据库
+fn save_translation_history(
+    app: &tauri::AppHandle,
+    image_base64: &str,
+    ocr_text: &str,
+    translated_text: &str,
+) -> Result<i64, String> {
+    // 将 Base64 图像数据解码为原始字节
+    let image_bytes = STANDARD.decode(image_base64).map_err(|e| format!("Base64解码失败: {}", e))?;
+
+    let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+    let service = history_service.lock().map_err(|e| format!("锁定HistoryService失败: {}", e))?;
+
+    let entry = crate::history::NewHistoryEntry {
+        image_data: image_bytes,
+        ocr_text: if ocr_text.is_empty() { None } else { Some(ocr_text.to_string()) },
+        translated_text: translated_text.to_string(),
+    };
+
+    service.add_entry(entry).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -284,4 +323,64 @@ pub async fn test_api_connection(
             _ => Err(format!("连接失败: {}", error_msg)),
         }
     }
+}
+
+// ===== 历史记录相关命令 =====
+
+#[tauri::command]
+pub fn get_history_list(
+    limit: u32,
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::history::HistoryListItem>, String> {
+    let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+    let service = history_service.lock().map_err(|e| {
+        log::error!("[CMD] 锁定 HistoryService 失败: {}", e);
+        e.to_string()
+    })?;
+    service.get_list(limit).map_err(|e| {
+        log::error!("[CMD] 获取历史列表失败: {}", e);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+pub fn get_history_detail(
+    id: i64,
+    app: tauri::AppHandle,
+) -> Result<crate::history::HistoryEntry, String> {
+    let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+    let service = history_service.lock().map_err(|e| {
+        log::error!("[CMD] 锁定 HistoryService 失败: {}", e);
+        e.to_string()
+    })?;
+    service.get_detail(id).map_err(|e| {
+        log::error!("[CMD] 获取历史详情失败: id={}, error={}", id, e);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+pub fn delete_history(id: i64, app: tauri::AppHandle) -> Result<bool, String> {
+    let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+    let service = history_service.lock().map_err(|e| {
+        log::error!("[CMD] 锁定 HistoryService 失败: {}", e);
+        e.to_string()
+    })?;
+    service.delete_entry(id).map(|_| true).map_err(|e| {
+        log::error!("[CMD] 删除历史记录失败: id={}, error={}", id, e);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+pub fn clear_history(app: tauri::AppHandle) -> Result<bool, String> {
+    let history_service = app.state::<std::sync::Mutex<crate::history::HistoryService>>();
+    let service = history_service.lock().map_err(|e| {
+        log::error!("[CMD] 锁定 HistoryService 失败: {}", e);
+        e.to_string()
+    })?;
+    service.clear_all().map(|_| true).map_err(|e| {
+        log::error!("[CMD] 清空历史记录失败: {}", e);
+        e.to_string()
+    })
 }
