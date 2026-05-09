@@ -27,6 +27,14 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
     let history_item = MenuItem::with_id(app, "history", "截图与翻译历史", true, None::<&str>)?;
     let separator2 = PredefinedMenuItem::separator(app)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+    // 在开发模式下禁用重启菜单项
+    let restart_item = MenuItem::with_id(
+        app,
+        "restart",
+        "重新启动",
+        !cfg!(debug_assertions), // 开发模式下禁用
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -38,6 +46,7 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
             &history_item,
             &separator2,
             &settings_item,
+            &restart_item,
             &quit_item,
         ],
     )?;
@@ -98,6 +107,17 @@ pub fn create_tray(app: &AppHandle, shortcuts: &ShortcutConfig) -> Result<(), Ap
             "settings" => {
                 if let Err(e) = crate::window::create_settings_window(app) {
                     log::error!("创建设置窗口失败: {}", e);
+                }
+            }
+            "restart" => {
+                // 在开发模式下，重启功能不可用，因为前端开发服务器不会重启
+                #[cfg(debug_assertions)]
+                {
+                    log::warn!("开发模式下不支持重启功能，请手动重启开发服务器");
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    app.restart();
                 }
             }
             "quit" => {
