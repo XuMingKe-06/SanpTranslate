@@ -1,5 +1,7 @@
 <template>
-  <router-view />
+  <div @contextmenu.prevent>
+    <router-view />
+  </div>
 </template>
 
 <script setup lang="ts">
