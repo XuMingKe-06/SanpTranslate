@@ -10,6 +10,7 @@
                 <n-select
                   v-model:value="formData.language"
                   :options="uiLanguageOptions"
+                  @update:value="onLanguageChange"
                 />
               </n-form-item>
             </n-form>
@@ -233,11 +234,44 @@ function populateForm(config: AppConfig) {
   formData.api_key = ''
 }
 
+/** 界面语言切换时立即生效，无需点击保存 */
+async function onLanguageChange(value: string) {
+  // 防止并发保存
+  if (configStore.loading) {
+    return
+  }
+
+  // 立即更新当前窗口的语言
+  if (value === 'auto') {
+    const sysLang = navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US'
+    locale.value = sysLang
+  } else {
+    locale.value = value
+  }
+
+  // 保存语言设置到后端（只更新语言，不影响其他未保存的表单数据）
+  const currentConfig = configStore.config
+  if (currentConfig) {
+    const newConfig: AppConfig = {
+      ...currentConfig,
+      language: value,
+    }
+    await configStore.updateConfig(newConfig)
+
+    // configStore.updateConfig 内部捕获异常，需通过 error 字段判断是否成功
+    if (configStore.error) {
+      message.error(`${t('settings.saveFailed')}: ${configStore.error}`)
+      logger.error(TAG, `保存语言设置失败: ${configStore.error}`)
+    } else {
+      logger.info(TAG, `界面语言即时切换并保存: config.language=${value}, locale=${locale.value}`)
+    }
+  }
+}
+
 /** 保存配置 */
 async function onSave() {
   saving.value = true
   try {
-    // 构建 AppConfig 对象
     const newConfig: AppConfig = {
       api_base_url: formData.api_base_url.trim(),
       model: formData.model.trim(),
@@ -256,14 +290,6 @@ async function onSave() {
     if (formData.api_key.trim()) {
       await configStore.setApiKey(formData.api_key.trim())
       formData.api_key = ''
-    }
-
-    // 立即更新当前窗口的界面语言
-    if (formData.language === 'auto') {
-      const sysLang = navigator.language.startsWith('zh') ? 'zh-CN' : 'en-US'
-      locale.value = sysLang
-    } else {
-      locale.value = formData.language
     }
 
     message.success(t('settings.configSaved'))
