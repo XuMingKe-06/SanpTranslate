@@ -102,6 +102,12 @@ pub fn run() {
 
             tray::create_tray(app.handle(), &app_config.shortcuts, &app_config.language)?;
 
+            // 启动剪贴板图片监控（缓存最近的图片，供 Ctrl+Alt+P 跳过文本粘贴图片）
+            let clipboard_cache = clipboard::ClipboardImageCache::new();
+            let watcher_cache = clipboard_cache.clone();
+            app.manage(clipboard_cache);
+            clipboard::start_clipboard_watcher(app.handle().clone(), watcher_cache);
+
             #[cfg(desktop)]
             hotkey::register_hotkeys(app.handle(), &app_config.shortcuts)?;
 

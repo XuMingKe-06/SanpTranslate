@@ -223,11 +223,24 @@ fn handle_pin_clipboard_hotkey(app: &tauri::AppHandle) {
     log::info!("[HOTKEY] 剪贴板贴图快捷键触发");
 
     let result = (|| -> Result<(), AppError> {
-        let image_data = match crate::clipboard::read_clipboard_image(app)? {
-            Some(data) => data,
-            None => {
-                log::info!("[HOTKEY] 剪贴板无图像，跳过");
-                return Ok(());
+        // 优先从后台监控缓存中获取最近的图片（即使当前剪贴板已被文本覆盖）
+        let image_data = {
+            let cache = app.state::<crate::clipboard::ClipboardImageCache>();
+            match cache.get() {
+                Some(data) => {
+                    log::info!("[HOTKEY] 使用剪贴板图片缓存");
+                    data
+                }
+                None => {
+                    // 缓存中没有图片，回退到直接读取当前剪贴板
+                    match crate::clipboard::read_clipboard_image(app)? {
+                        Some(data) => data,
+                        None => {
+                            log::info!("[HOTKEY] 剪贴板无图像，跳过");
+                            return Ok(());
+                        }
+                    }
+                }
             }
         };
 

@@ -1,9 +1,56 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use image::ImageEncoder;
 use std::io::Cursor;
+use std::sync::{Arc, Mutex};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::error::AppError;
+
+/// 剪贴板图片缓存
+/// 后台线程持续监控剪贴板，一旦检测到图片即缓存其 Base64 数据
+/// 供 Ctrl+Alt+P 快捷键使用，即使后续复制了文本也能找到最近的图片
+#[derive(Clone)]
+pub struct ClipboardImageCache(pub Arc<Mutex<Option<String>>>);
+
+impl ClipboardImageCache {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+
+    /// 获取缓存的图片 Base64 数据（如果有）
+    pub fn get(&self) -> Option<String> {
+        self.0.lock().ok()?.clone()
+    }
+
+    /// 更新缓存（内部使用，由后台监控线程调用）
+    fn set(&self, data: String) {
+        if let Ok(mut cache) = self.0.lock() {
+            *cache = Some(data);
+        }
+    }
+}
+
+/// 启动剪贴板图片监控后台线程
+/// 每秒检查一次剪贴板是否有图片，有则缓存其 Base64 数据
+pub fn start_clipboard_watcher(app_handle: tauri::AppHandle, cache: ClipboardImageCache) {
+    std::thread::spawn(move || {
+        log::info!("[CLIPBOARD] 剪贴板图片监控已启动");
+        loop {
+            match read_clipboard_image(&app_handle) {
+                Ok(Some(data)) => {
+                    cache.set(data);
+                }
+                Ok(None) => {
+                    // 剪贴板当前无图片，保持缓存不变
+                }
+                Err(e) => {
+                    log::debug!("[CLIPBOARD] 读取剪贴板失败: {}", e);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        }
+    });
+}
 
 /// 将 Base64 编码的图像数据写入系统剪贴板
 /// 算法: Base64 解码 -> 直接构造 tauri Image -> 写入剪贴板
