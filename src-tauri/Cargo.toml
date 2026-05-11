@@ -1,9 +1,9 @@
 [package]
 name = "snap-translate"
-version = "0.1.0"
+version = "1.0.0"
 description = "A snapshot translation tool"
-authors = ["you"]
-edition = "2021"
+authors = ["XuMingKe"]
+edition = "2024"
 
 [lib]
 name = "snap_translate_lib"
