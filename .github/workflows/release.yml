@@ -88,7 +88,8 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libxdo-dev
+            libxdo-dev \
+            libpipewire-0.3-dev
 
       # 安装前端依赖
       - name: 安装前端依赖
