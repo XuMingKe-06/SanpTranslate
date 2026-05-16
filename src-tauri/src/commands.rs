@@ -511,6 +511,26 @@ pub fn clear_history(app: tauri::AppHandle) -> Result<bool, String> {
     })
 }
 
+/// 仅执行 OCR 识别，不翻译；用于"复制原文"功能（无需调用 API 即可获取文字）
+#[tauri::command]
+pub async fn ocr_image(
+    image_data: String,
+    app: tauri::AppHandle,
+) -> Result<Vec<crate::ocr::OcrBlock>, String> {
+    log::info!("[CMD] ocr_image: 正在进行 OCR 识别...");
+    let ocr_blocks = crate::ocr::extract_text_with_positions(
+        &app, &image_data, "chi_sim+eng"
+    ).await.map_err(|e| format!("OCR识别失败: {}", e))?;
+
+    if ocr_blocks.is_empty() {
+        log::info!("[CMD] ocr_image: OCR未识别到文字");
+    } else {
+        log::info!("[CMD] ocr_image: OCR识别完成，共 {} 个文字块", ocr_blocks.len());
+    }
+
+    Ok(ocr_blocks)
+}
+
 /// 纯文本翻译命令：接收文本直接翻译，支持历史缓存
 #[tauri::command]
 pub async fn translate_text(

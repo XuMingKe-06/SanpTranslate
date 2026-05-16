@@ -19,6 +19,7 @@ export default {
     translating: 'Translating...',
     copyTranslation: 'Copy Translation',
     copyOriginal: 'Copy Original',
+    recognizing: 'Recognizing...',
     showOriginal: 'Show Original',
     showTranslation: 'Show Translation',
     cacheHit: 'From cache',

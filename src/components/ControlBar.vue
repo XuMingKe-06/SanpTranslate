@@ -1,13 +1,23 @@
 <template>
   <div class="control-bar">
-    <!-- idle 或 error 状态：显示 AI 翻译主按钮 -->
-    <button
-      v-if="translateStatus === 'idle' || translateStatus === 'error'"
-      class="btn"
-      @click="$emit('translate')"
-    >
-      {{ translateStatus === 'error' ? t('controlBar.retranslate') : t('controlBar.translate') }}
-    </button>
+    <!-- idle 或 error 状态：显示 AI 翻译主按钮 + 复制原文按钮 -->
+    <template v-if="translateStatus === 'idle' || translateStatus === 'error'">
+      <button
+        class="btn"
+        @click="$emit('translate')"
+      >
+        {{ translateStatus === 'error' ? t('controlBar.retranslate') : t('controlBar.translate') }}
+      </button>
+
+      <!-- 复制原文按钮（idle 状态下通过 OCR 识别获取文字） -->
+      <button
+        class="btn"
+        :disabled="ocrLoading"
+        @click="$emit('ocrCopyOriginal')"
+      >
+        {{ ocrLoading ? t('controlBar.recognizing') : t('controlBar.copyOriginal') }}
+      </button>
+    </template>
 
     <!-- error 状态：显示错误提示信息 -->
     <span v-if="translateStatus === 'error' && errorMessage" class="error-msg">
@@ -64,6 +74,8 @@ defineProps<{
   errorMessage?: string
   /** 是否来自历史缓存 */
   fromCache?: boolean
+  /** OCR 是否正在识别中（idle 状态下"复制原文"按钮的加载状态） */
+  ocrLoading?: boolean
 }>()
 
 defineEmits<{
@@ -77,6 +89,8 @@ defineEmits<{
   copyTranslation: []
   /** 原文/译文切换按钮点击 */
   toggleOriginal: []
+  /** idle 状态下"复制原文"按钮点击（需先执行 OCR） */
+  ocrCopyOriginal: []
 }>()
 </script>
 

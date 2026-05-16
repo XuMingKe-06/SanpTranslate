@@ -45,6 +45,7 @@ pub fn run() {
             commands::get_overlay_image,
             commands::store_pin_image,
             commands::translate_image,
+            commands::ocr_image,
             commands::translate_text,
             commands::get_api_key,
             commands::set_api_key,

@@ -25,11 +25,13 @@
           :has-translation="hasTranslation"
           :error-message="errorMessage"
           :from-cache="fromCache"
+          :ocr-loading="ocrLoading"
           @translate="onTranslate"
           @retranslate="onRetranslate"
           @copy-original="onCopyOriginal"
           @copy-translation="onCopyTranslation"
           @toggle-original="onToggleOriginal"
+          @ocr-copy-original="onOcrCopyOriginal"
         />
       </div>
       <!-- 译文面板 -->
@@ -63,6 +65,7 @@ import {
   getPinImage,
   getConfig,
   translateImage,
+  ocrImage,
   writeClipboardText,
   type TranslatedBlock,
 } from '@/utils/tauri'
@@ -89,6 +92,9 @@ const hasTranslation = ref(false)
 const translatedBlocks = ref<TranslatedBlock[]>([])
 const errorMessage = ref<string>('')
 const fromCache = ref(false)
+
+// OCR 识别加载状态（idle 状态下"复制原文"按钮使用）
+const ocrLoading = ref(false)
 
 // 译文面板拉伸相关状态
 const panelRef = ref<HTMLElement | null>(null)
@@ -484,6 +490,28 @@ async function onCopyOriginal() {
     } catch (err) {
       logger.error(TAG, `复制原文失败: ${err}`, err)
     }
+  }
+}
+
+// idle 状态下通过 OCR 识别文字并复制原文到剪贴板
+async function onOcrCopyOriginal() {
+  if (ocrLoading.value) return
+  ocrLoading.value = true
+
+  try {
+    const blocks = await ocrImage(rawBase64Data)
+    if (!blocks || blocks.length === 0) {
+      logger.info(TAG, 'OCR 未识别到文字，无法复制原文')
+      return
+    }
+
+    const text = blocks.map(b => b.text).join('\n')
+    await writeClipboardText(text)
+    logger.info(TAG, 'OCR 识别原文已复制到剪贴板')
+  } catch (err) {
+    logger.error(TAG, `OCR 复制原文失败: ${err}`, err)
+  } finally {
+    ocrLoading.value = false
   }
 }
 

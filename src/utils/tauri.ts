@@ -169,6 +169,13 @@ export async function translateImage(
   return invoke<TranslateResult>('translate_image', { imageData, targetLanguage, forceRetranslate })
 }
 
+/** 仅执行 OCR 识别，返回文字块列表（不翻译，用于"复制原文"功能） */
+export async function ocrImage(
+  imageData: string
+): Promise<OcrBlock[]> {
+  return invoke<OcrBlock[]>('ocr_image', { imageData })
+}
+
 /** 纯文本翻译，返回翻译结果；forceRetranslate 为 true 时跳过历史缓存，强制调用 API */
 export async function translateText(
   text: string,

@@ -19,6 +19,7 @@ export default {
     translating: '翻译中...',
     copyTranslation: '复制译文',
     copyOriginal: '复制原文',
+    recognizing: '识别中...',
     showOriginal: '显示原文',
     showTranslation: '显示译文',
     cacheHit: '已从历史缓存获取',
