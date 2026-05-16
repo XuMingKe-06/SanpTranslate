@@ -22,7 +22,17 @@
           @keydown.ctrl.enter="onTranslate"
           @input="onInputChange"
         ></textarea>
+        <div class="input-footer">
         <div class="shortcut-hint">{{ t('textTranslate.shortcutHint') }}</div>
+        <div class="target-language-area">
+          <span class="target-language-label">{{ t('textTranslate.targetLanguage') }}</span>
+          <select v-model="targetLanguage" class="target-language-select">
+            <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+      </div>
       </div>
       <button
         class="translate-btn"
@@ -65,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
@@ -89,6 +99,21 @@ const errorMessage = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const translationContentRef = ref<HTMLElement | null>(null)
 const copyFeedback = ref(false)
+// 目标语言：默认从配置读取，用户可在此窗口临时覆盖，不回写设置
+const targetLanguage = ref('zh-CN')
+
+// 目标语言选项列表（与设置页面一致，使用 i18n 标签）
+const languageOptions = computed(() => [
+  { label: t('settings.langZhCN'), value: 'zh-CN' },
+  { label: t('settings.langZhTW'), value: 'zh-TW' },
+  { label: t('settings.langEn'), value: 'en' },
+  { label: t('settings.langJa'), value: 'ja' },
+  { label: t('settings.langKo'), value: 'ko' },
+  { label: t('settings.langFr'), value: 'fr' },
+  { label: t('settings.langDe'), value: 'de' },
+  { label: t('settings.langEs'), value: 'es' },
+  { label: t('settings.langRu'), value: 'ru' },
+])
 
 /** 翻译核心逻辑 */
 async function doTranslate(forceRetranslate: boolean) {
@@ -98,10 +123,9 @@ async function doTranslate(forceRetranslate: boolean) {
   errorMessage.value = ''
 
   try {
-    const config = await getConfig()
-    logger.info(TAG, `开始文本翻译，目标语言=${config.target_language}，强制重新翻译=${forceRetranslate}`)
+    logger.info(TAG, `开始文本翻译，目标语言=${targetLanguage.value}，强制重新翻译=${forceRetranslate}`)
 
-    const result = await translateText(inputText.value.trim(), config.target_language, forceRetranslate)
+    const result = await translateText(inputText.value.trim(), targetLanguage.value, forceRetranslate)
 
     if (!result.translated_text) {
       logger.info(TAG, '翻译结果为空')
@@ -188,6 +212,14 @@ async function handleEscKey(e: KeyboardEvent) {
 
 onMounted(async () => {
   logger.info(TAG, 'TextTranslateView onMounted')
+  // 从配置读取默认目标语言
+  try {
+    const config = await getConfig()
+    targetLanguage.value = config.target_language
+    logger.info(TAG, `从配置读取目标语言: ${config.target_language}`)
+  } catch (err) {
+    logger.error(TAG, `读取配置失败，使用默认目标语言: ${err}`)
+  }
   // 自动聚焦输入框
   await nextTick()
   if (inputRef.value) {
@@ -284,11 +316,63 @@ onUnmounted(() => {
   user-select: text;
 }
 
+.input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .shortcut-hint {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.35);
-  text-align: right;
   user-select: none;
+}
+
+.target-language-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.target-language-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.target-language-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 2px 22px 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  line-height: 1.4;
+  outline: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(255,255,255,0.5)' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px 6px;
+}
+
+.target-language-select:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.target-language-select:focus {
+  border-color: rgba(58, 123, 213, 0.6);
+}
+
+.target-language-select option {
+  background: #2a2a2e;
+  color: #f0f0f0;
 }
 
 .text-input:focus {

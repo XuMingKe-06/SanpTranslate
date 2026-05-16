@@ -132,6 +132,7 @@ export default {
     retranslate: '重新翻译',
     translating: '翻译中...',
     copyTranslation: '复制译文',
+    targetLanguage: '目标语言',
   },
 
   // 错误信息

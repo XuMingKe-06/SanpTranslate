@@ -23,11 +23,11 @@
 
 ## Introduction
 
-**SnapTranslate** is a desktop screenshot translation tool designed for developers and language learners. Select any region on the screen to instantly perform OCR text recognition + AI translation, with the translated text overlaid onto the original content — what you see is what you get.
+**SnapTranslate** is a desktop screenshot translation tool designed for developers and language learners. Select any region on the screen to instantly perform OCR text recognition + AI translation, with the translated text displayed in a right-side panel — original and translation side by side at a glance.
 
-**Core Philosophy:** One-click region select → In-place overlay → Snapshot and translate as you go
+**Core Philosophy:** One-click region select → In-place pin → Panel translation
 
-> Screenshots are pinned at their original position — no popups, no page jumps, no workflow interruption.
+> Screenshots are pinned at their original position, translations shown in the right panel — no popups, no page jumps, no workflow interruption.
 
 ---
 
@@ -37,7 +37,7 @@
 |---------|-------------|
 | **Region Screenshot Translation** | Global hotkey `Ctrl+Alt+L` activates the overlay, drag to select any region, screenshot pinned at original position automatically |
 | **Clipboard Pin** | `Ctrl+Alt+P` pastes an image from the system clipboard onto the desktop for translation |
-| **Text Translation** | `Ctrl+Alt+M` opens a clean text translation window, `Ctrl+Enter` for quick translation |
+| **Text Translation** | `Ctrl+Alt+M` opens a clean text translation window with customizable target language, `Ctrl+Enter` for quick translation |
 | **Local OCR** | Built-in Tesseract offline engine, automatically recognizes text and paragraph positions in screenshots — no internet required |
 | **AI Translation** | Supports any OpenAI-compatible API (bring your own model and key), directly connecting to your AI capabilities |
 | **Smart Translation Cache** | Repeated content automatically matches historical records; cache hit skips the API call for instant results |
@@ -67,7 +67,7 @@ On first use, right-click the system tray icon → **Settings**, then fill in:
 ```
 Press Ctrl+Alt+L         Select region, screenshot pinned at original position
                               ↓
-Click "Translate" button     OCR + AI translation, results overlaid on original text
+Click "Translate" button     OCR + AI translation, results displayed in the right panel
                               ↓
 Click "Copy Translation"     Copy translated text to clipboard
                               ↓

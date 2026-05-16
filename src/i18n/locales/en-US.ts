@@ -132,6 +132,7 @@ export default {
     retranslate: 'Re-translate',
     translating: 'Translating...',
     copyTranslation: 'Copy Translation',
+    targetLanguage: 'Target Language',
   },
 
   // Error messages
