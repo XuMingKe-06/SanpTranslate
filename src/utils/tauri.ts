@@ -11,6 +11,8 @@ export interface AppConfig {
   target_language: string
   /** 界面语言（"auto" 跟随系统，"zh-CN" 或 "en-US"） */
   language: string
+  /** OCR 识别语言（"eng", "chi_sim", "jpn"） */
+  ocr_language: string
   /** 快捷键配置 */
   shortcuts: ShortcutConfig
 }

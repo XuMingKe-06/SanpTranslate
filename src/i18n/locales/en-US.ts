@@ -52,6 +52,8 @@ export default {
     model: 'Model',
     translateConfig: 'Translation',
     targetLanguage: 'Target Language',
+    ocrLanguage: 'Source Language',
+    ocrLanguageAuto: 'Auto Detect',
     shortcutConfig: 'Shortcuts',
     captureShortcut: 'Capture Shortcut',
     pinClipboardShortcut: 'Pin from Clipboard',

@@ -52,6 +52,8 @@ export default {
     model: '模型',
     translateConfig: '翻译配置',
     targetLanguage: '目标语言',
+    ocrLanguage: '源语言',
+    ocrLanguageAuto: '自动检测',
     shortcutConfig: '快捷键配置',
     captureShortcut: '截图快捷键',
     pinClipboardShortcut: '剪贴板贴图',

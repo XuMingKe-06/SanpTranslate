@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
 use crate::config::ShortcutConfig;
 use crate::error::AppError;
@@ -10,6 +10,35 @@ pub struct CurrentShortcuts {
     pub capture: Shortcut,
     pub pin_clipboard: Shortcut,
     pub text_translate: Shortcut,
+}
+
+/// 统一处理全局快捷键事件（由 lib.rs 中注册的插件回调）
+pub fn handle_shortcut_event(app: &tauri::AppHandle, shortcut: &Shortcut) {
+    let shortcuts = match app.try_state::<Arc<Mutex<CurrentShortcuts>>>() {
+        Some(s) => s,
+        None => return,
+    };
+
+    let is_capture;
+    let is_pin;
+    let is_text_translate;
+    {
+        let current = match shortcuts.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        is_capture = shortcut == &current.capture;
+        is_pin = shortcut == &current.pin_clipboard;
+        is_text_translate = shortcut == &current.text_translate;
+    }
+
+    if is_capture {
+        handle_capture_hotkey(app);
+    } else if is_pin {
+        handle_pin_clipboard_hotkey(app);
+    } else if is_text_translate {
+        handle_text_translate_hotkey(app);
+    }
 }
 
 /// 注册全局快捷键（应用启动时调用）
@@ -26,40 +55,7 @@ pub fn register_hotkeys(app: &tauri::AppHandle, config: &ShortcutConfig) -> Resu
     }));
 
     // 存入应用状态，供 reregister_hotkeys 更新
-    app.manage(shortcuts.clone());
-
-    // 闭包捕获 Arc 的克隆，直接通过 Arc 访问快捷键
-    let shortcuts_handler = shortcuts.clone();
-
-    app.plugin(
-        tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |app, shortcut, event| {
-                if event.state() != ShortcutState::Pressed {
-                    return;
-                }
-
-                // 通过 Arc 直接访问，将比较结果复制出来后再调用处理函数
-                let is_capture;
-                let is_pin;
-                let is_text_translate;
-                {
-                    let current = shortcuts_handler.lock().unwrap();
-                    is_capture = shortcut == &current.capture;
-                    is_pin = shortcut == &current.pin_clipboard;
-                    is_text_translate = shortcut == &current.text_translate;
-                }
-
-                if is_capture {
-                    handle_capture_hotkey(app);
-                } else if is_pin {
-                    handle_pin_clipboard_hotkey(app);
-                } else if is_text_translate {
-                    handle_text_translate_hotkey(app);
-                }
-            })
-            .build(),
-    )
-    .map_err(|e| AppError::ConfigError(format!("注册全局快捷键插件失败: {}", e)))?;
+    app.manage(shortcuts);
 
     app.global_shortcut()
         .register(capture_shortcut)
@@ -140,69 +136,86 @@ pub fn reregister_hotkeys(app: &tauri::AppHandle, new_config: &ShortcutConfig) -
     Ok(())
 }
 
-/// 截屏流程：先快速捕获原始像素确保裁剪数据就绪，再创建蒙版窗口
+/// 截屏流程（托盘菜单点击触发）：延迟 250ms 等待托盘菜单从屏幕上消失后再截图
+/// 快捷键触发时直接使用 handle_capture_hotkey，无需此延迟
 pub fn handle_capture_flow(app: &tauri::AppHandle) -> Result<(), AppError> {
-    let monitor = app
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .ok_or_else(|| AppError::ConfigError("获取主显示器信息失败".to_string()))?;
-    let scale_factor = monitor.scale_factor();
-    let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
-    let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
-
-    // 第一步：同步捕获原始像素（仅 raw capture，不编码，速度快）
-    // 确保在蒙版窗口出现前裁剪数据已就绪，用户松开鼠标时可立即裁剪
-    let rgba_image = {
-        let state = app.state::<std::sync::Mutex<crate::capture::CaptureService>>();
-        let locked = state.lock().map_err(|e| {
-            AppError::ConfigError(format!("锁定截图服务失败: {}", e))
-        })?;
-        locked.capture_fullscreen_raw(None)?
-    };
-
-    // 第二步：立即存储原始像素到缓存，供后续裁剪使用
-    {
-        let store = app.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
-        let mut store = store.lock().map_err(|e| {
-            AppError::ConfigError(format!("锁定缓存失败: {}", e))
-        })?;
-        store.screen = Some(crate::window::CachedScreen {
-            image: rgba_image.clone(),
-            monitor_x,
-            monitor_y,
-            scale_factor,
-        });
-    }
-
-    // 第三步：创建蒙版窗口（此时 screen 数据已就绪，前端可立即裁剪）
-    crate::window::create_overlay_window_lazy(app)?;
-    log::info!("[HOTKEY] overlay 窗口创建成功（屏幕数据已就绪，后台编码截图中...）");
-
-    // 第四步：后台线程编码 JPEG（仅用于蒙版背景显示，不影响裁剪）
     let app_clone = app.clone();
     std::thread::spawn(move || {
-        let result = (|| -> Result<(), AppError> {
-            let dynamic_image = image::DynamicImage::ImageRgba8(rgba_image);
-            let jpeg_base64 = crate::capture::encode_to_base64_jpeg(&dynamic_image, 50)?;
+        // 等待托盘菜单弹出框完全从屏幕消失（系统菜单关闭动画 + 合成器刷新）
+        std::thread::sleep(std::time::Duration::from_millis(250));
 
+        let result = (|| -> Result<(), crate::error::AppError> {
+            let monitor = app_clone
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .ok_or_else(|| crate::error::AppError::ConfigError("获取主显示器信息失败".to_string()))?;
+            let scale_factor = monitor.scale_factor();
+            let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
+            let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
+
+            // 捕获原始像素（托盘菜单已消失）
+            let rgba_image = {
+                let state = app_clone.state::<std::sync::Mutex<crate::capture::CaptureService>>();
+                let locked = state.lock().map_err(|e| {
+                    crate::error::AppError::ConfigError(format!("锁定截图服务失败: {}", e))
+                })?;
+                locked.capture_fullscreen_raw(None)?
+            };
+
+            // 存储原始像素到缓存
             {
                 let store = app_clone.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
                 let mut store = store.lock().map_err(|e| {
-                    AppError::ConfigError(format!("锁定缓存失败: {}", e))
+                    crate::error::AppError::ConfigError(format!("锁定缓存失败: {}", e))
                 })?;
-                store.overlay_image = Some(crate::window::OverlayImageData {
-                    data: jpeg_base64,
-                    mime: "image/jpeg".to_string(),
+                store.screen = Some(crate::window::CachedScreen {
+                    image: rgba_image.clone(),
+                    monitor_x,
+                    monitor_y,
+                    scale_factor,
+                    tauri_monitor_width: monitor.size().width,
+                    tauri_monitor_height: monitor.size().height,
                 });
             }
 
-            log::info!("[HOTKEY] 后台 JPEG 编码完成，蒙版背景数据已就绪");
+            // 切回主线程创建蒙版窗口（GTK 窗口必须在主线程创建）
+            let app_main = app_clone.clone();
+            app_clone.run_on_main_thread(move || {
+                if let Err(e) = crate::window::create_overlay_window_lazy(&app_main) {
+                    log::error!("[HOTKEY] 创建 overlay 窗口失败: {}", e);
+                } else {
+                    log::info!("[HOTKEY] overlay 窗口创建成功（屏幕数据已就绪，后台编码截图中...）");
+                }
+            }).ok();
+
+            // 后台编码 JPEG（用于蒙版背景显示）
+            let app_jpeg = app_clone.clone();
+            std::thread::spawn(move || {
+                let result = (|| -> Result<(), crate::error::AppError> {
+                    let dynamic_image = image::DynamicImage::ImageRgba8(rgba_image);
+                    let jpeg_base64 = crate::capture::encode_to_base64_jpeg(&dynamic_image, 50)?;
+                    let store = app_jpeg.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
+                    let mut store = store.lock().map_err(|e| {
+                        crate::error::AppError::ConfigError(format!("锁定缓存失败: {}", e))
+                    })?;
+                    store.overlay_image = Some(crate::window::OverlayImageData {
+                        data: jpeg_base64,
+                        mime: "image/jpeg".to_string(),
+                    });
+                    log::info!("[HOTKEY] 后台 JPEG 编码完成，蒙版背景数据已就绪");
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    log::error!("[HOTKEY] 后台 JPEG 编码失败: {}", e);
+                }
+            });
+
             Ok(())
         })();
 
         if let Err(e) = result {
-            log::error!("[HOTKEY] 后台 JPEG 编码失败: {}", e);
+            log::error!("[HOTKEY] 截图流程处理失败: {}", e);
         }
     });
 
@@ -212,11 +225,85 @@ pub fn handle_capture_flow(app: &tauri::AppHandle) -> Result<(), AppError> {
 fn handle_capture_hotkey(app: &tauri::AppHandle) {
     log::info!("[HOTKEY] 截图快捷键触发");
 
-    let result = handle_capture_flow(app);
+    // 将耗时的 xcap 截图操作放到后台线程，快捷键回调立即返回
+    // xcap::Monitor::capture_image() 在 Linux X11 下可能耗时 200-600ms
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        // --- 后台线程：执行阻塞截图 ---
+        let result = (|| -> Result<(), crate::error::AppError> {
+            let monitor = app_clone
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .ok_or_else(|| crate::error::AppError::ConfigError("获取主显示器信息失败".to_string()))?;
+            let scale_factor = monitor.scale_factor();
+            let monitor_x = (monitor.position().x as f64 * scale_factor).round() as i32;
+            let monitor_y = (monitor.position().y as f64 * scale_factor).round() as i32;
 
-    if let Err(e) = result {
-        log::error!("[HOTKEY] 截图快捷键处理失败: {}", e);
-    }
+            // 阻塞截图（耗时操作，在后台线程中执行）
+            let rgba_image = {
+                let state = app_clone.state::<std::sync::Mutex<crate::capture::CaptureService>>();
+                let locked = state.lock().map_err(|e| {
+                    crate::error::AppError::ConfigError(format!("锁定截图服务失败: {}", e))
+                })?;
+                locked.capture_fullscreen_raw(None)?
+            };
+
+            // 将原始像素存入缓存
+            {
+                let store = app_clone.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
+                let mut store = store.lock().map_err(|e| {
+                    crate::error::AppError::ConfigError(format!("锁定缓存失败: {}", e))
+                })?;
+                store.screen = Some(crate::window::CachedScreen {
+                    image: rgba_image.clone(),
+                    monitor_x,
+                    monitor_y,
+                    scale_factor,
+                    tauri_monitor_width: monitor.size().width,
+                    tauri_monitor_height: monitor.size().height,
+                });
+            }
+
+            // --- 截图完成，切回主线程创建 GTK 窗口 ---
+            let app_main = app_clone.clone();
+            app_clone.run_on_main_thread(move || {
+                if let Err(e) = crate::window::create_overlay_window_lazy(&app_main) {
+                    log::error!("[HOTKEY] 创建 overlay 窗口失败: {}", e);
+                } else {
+                    log::info!("[HOTKEY] overlay 窗口已创建（截图数据已就绪）");
+                }
+            }).ok();
+
+            // 后台编码 JPEG（用于蒙版背景显示）
+            let app_jpeg = app_clone.clone();
+            std::thread::spawn(move || {
+                let result = (|| -> Result<(), crate::error::AppError> {
+                    let dynamic_image = image::DynamicImage::ImageRgba8(rgba_image);
+                    let jpeg_base64 = crate::capture::encode_to_base64_jpeg(&dynamic_image, 50)?;
+                    let store = app_jpeg.state::<std::sync::Mutex<crate::window::CachedScreenStore>>();
+                    let mut store = store.lock().map_err(|e| {
+                        crate::error::AppError::ConfigError(format!("锁定缓存失败: {}", e))
+                    })?;
+                    store.overlay_image = Some(crate::window::OverlayImageData {
+                        data: jpeg_base64,
+                        mime: "image/jpeg".to_string(),
+                    });
+                    log::info!("[HOTKEY] 后台 JPEG 编码完成");
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    log::error!("[HOTKEY] 后台 JPEG 编码失败: {}", e);
+                }
+            });
+
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            log::error!("[HOTKEY] 截图快捷键处理失败: {}", e);
+        }
+    });
 }
 
 fn handle_pin_clipboard_hotkey(app: &tauri::AppHandle) {

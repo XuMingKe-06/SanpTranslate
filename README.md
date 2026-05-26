@@ -38,7 +38,7 @@
 | **框选截图翻译** | 全局快捷键 `Ctrl+Alt+L` 唤起截图蒙版，拖拽框选任意区域，截图自动贴在屏幕原位 |
 | **剪贴板贴图** | `Ctrl+Alt+P` 将系统剪贴板中的图片贴到桌面上进行翻译 |
 | **文本翻译** | `Ctrl+Alt+M` 打开简洁文本翻译窗口，支持自定义目标语言，Ctrl+Enter 快捷翻译 |
-| **本地 OCR** | 内置 Tesseract 离线引擎，自动识别截图中文字及段落坐标，无需联网 |
+| **本地 OCR** | 内置 Tesseract 离线引擎，支持中简、英、日多国语言，支持本地智能自动语言检测，无需联网 |
 | **AI 翻译** | 支持任意 OpenAI 兼容 API（自备模型与密钥），与你的 AI 能力直接对接 |
 | **智能翻译缓存** | 重复内容自动匹配历史记录，命中缓存则跳过 API 调用，秒出结果 |
 | **原位贴图窗口** | 截图固定在原始截取位置，右侧译文面板支持高度拉伸，深色透明无干扰 |
@@ -122,8 +122,21 @@
 ### 系统要求
 
 - **Windows**: Windows 10 (1803+)，需 WebView2（系统自带）
-- **macOS**: macOS 12+，需 WebKit（系统自带）
-- **Linux**: 支持 X11/Wayland，需 WebKitGTK
+- **macOS**: macOS 12+，需 WebKit（系统自带），且需通过 Homebrew 安装 Tesseract 及语言包：
+  ```bash
+  brew install tesseract tesseract-lang
+  ```
+- **Linux**: 支持 X11/Wayland，需 WebKitGTK，且需安装 Tesseract 引擎及对应的语言包（自动检测和纯语言模式均需对应的 `.traineddata` 文件）：
+  - **Ubuntu / Debian**:
+    ```bash
+    sudo apt update
+    # 安装 Tesseract 引擎及中文简体、英文、日语语言包
+    sudo apt install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng tesseract-ocr-jpn
+    ```
+  - **Arch Linux**:
+    ```bash
+    sudo pacman -S tesseract tesseract-data-chi_sim tesseract-data-eng tesseract-data-jpn
+    ```
 
 ---
 
@@ -139,7 +152,7 @@
 | 路由 | [Vue Router 5](https://router.vuejs.org/) |
 | 国际化 | [vue-i18n 11](https://vue-i18n.intlify.dev/) |
 | 屏幕截图 | [xcap](https://crates.io/crates/xcap) |
-| OCR | Tesseract CLI（内置 `chi_sim` + `eng` 语言数据） |
+| OCR | Tesseract CLI（支持中简、英、日等多语言，支持本地智能自动语言检测） |
 | AI 翻译 | HTTP (reqwest) → OpenAI 兼容 API |
 | 数据库 | SQLite ([rusqlite](https://crates.io/crates/rusqlite)) |
 | 安全存储 | [keyring](https://crates.io/crates/keyring)（OS 凭据管理器） |

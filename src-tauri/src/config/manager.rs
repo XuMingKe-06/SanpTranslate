@@ -40,6 +40,8 @@ pub struct AppConfig {
     pub target_language: String,
     /// 界面语言（"auto" 表示跟随系统，"zh-CN" 或 "en-US"）
     pub language: String,
+    /// OCR 识别语言（"eng", "chi_sim", "jpn"）
+    pub ocr_language: String,
     /// 快捷键配置
     pub shortcuts: ShortcutConfig,
 }
@@ -51,6 +53,7 @@ impl Default for AppConfig {
             model: String::new(),
             target_language: "zh-CN".to_string(),
             language: "auto".to_string(),
+            ocr_language: "auto".to_string(),
             shortcuts: ShortcutConfig::default(),
         }
     }

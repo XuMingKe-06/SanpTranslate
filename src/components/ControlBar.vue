@@ -1,5 +1,5 @@
 <template>
-  <div class="control-bar">
+  <div class="control-bar" :class="{ vertical }">
     <!-- idle 或 error 状态：显示 AI 翻译主按钮 + 复制原文按钮 -->
     <template v-if="translateStatus === 'idle' || translateStatus === 'error'">
       <button
@@ -76,6 +76,8 @@ defineProps<{
   fromCache?: boolean
   /** OCR 是否正在识别中（idle 状态下"复制原文"按钮的加载状态） */
   ocrLoading?: boolean
+  /** 是否垂直排布 */
+  vertical?: boolean
 }>()
 
 defineEmits<{
@@ -102,6 +104,33 @@ defineEmits<{
   padding: 4px 0;
   background: transparent;
   min-height: var(--control-bar-height);
+}
+
+.control-bar.vertical {
+  flex-direction: column;
+  align-items: stretch;
+  width: 90px;
+  padding: 0 4px;
+  min-height: auto;
+}
+
+.control-bar.vertical .btn {
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.control-bar.vertical .cache-hint {
+  margin-left: 0;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.control-bar.vertical .error-msg {
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-all;
+  text-align: center;
 }
 
 .btn {

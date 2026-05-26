@@ -6,10 +6,10 @@
     @mouseup="onMouseUp"
     @dblclick="onDoubleClick"
   >
-    <!-- 内容行：左侧（截图+控制栏） + 右侧译文面板 -->
-    <div class="content-row">
-      <!-- 左侧列：图片和控制栏固定在一起，不受面板拉伸影响 -->
-      <div class="left-column">
+    <!-- 主布局：水平排列（核心内容区 + 右侧垂直控制栏） -->
+    <div class="main-layout">
+      <!-- 核心内容垂直叠放区：截图 + 译文面板 -->
+      <div class="core-stack" ref="leftColumnRef" :style="coreStackStyle">
         <div class="image-area" ref="imageArea" :style="{ boxShadow: shadowStyle }">
           <img
             v-if="imageDataUrl"
@@ -19,48 +19,53 @@
             @load="onImageLoad"
           />
         </div>
-        <ControlBar v-if="imageLoaded"
-          :translate-status="translateStatus"
-          :show-original="showOriginal"
-          :has-translation="hasTranslation"
-          :error-message="errorMessage"
-          :from-cache="fromCache"
-          :ocr-loading="ocrLoading"
-          @translate="onTranslate"
-          @retranslate="onRetranslate"
-          @copy-original="onCopyOriginal"
-          @copy-translation="onCopyTranslation"
-          @toggle-original="onToggleOriginal"
-          @ocr-copy-original="onOcrCopyOriginal"
-        />
-      </div>
-      <!-- 译文面板 -->
-      <div
-        v-if="hasTranslation && !showOriginal"
-        ref="panelRef"
-        class="translation-panel"
-        :style="panelHeight ? { height: panelHeight + 'px' } : undefined"
-      >
-        <div class="translation-items-container">
-          <div
-            v-for="(block, index) in filteredBlocks"
-            :key="index"
-            class="translation-item"
-          >
-            <div class="translation-text">{{ block.translated }}</div>
-            <div v-if="index < filteredBlocks.length - 1" class="translation-separator"></div>
+
+        <!-- 译文面板 (放截图下面) -->
+        <div
+          v-if="hasTranslation && !showOriginal"
+          ref="panelRef"
+          class="translation-panel"
+          :style="panelHeight ? { height: panelHeight + 'px' } : undefined"
+        >
+          <div class="translation-items-container">
+            <div
+              v-for="(block, index) in filteredBlocks"
+              :key="index"
+              class="translation-item"
+            >
+              <div class="translation-text">{{ block.translated }}</div>
+              <div v-if="index < filteredBlocks.length - 1" class="translation-separator"></div>
+            </div>
           </div>
+          <div class="panel-resize-handle" @mousedown.stop="onResizeStart"></div>
         </div>
-        <div class="panel-resize-handle" @mousedown.stop="onResizeStart"></div>
       </div>
+
+      <!-- 右侧控制栏 (始终固定在右侧) -->
+      <ControlBar
+        v-if="imageLoaded"
+        :translate-status="translateStatus"
+        :show-original="showOriginal"
+        :has-translation="hasTranslation"
+        :error-message="errorMessage"
+        :from-cache="fromCache"
+        :ocr-loading="ocrLoading"
+        vertical
+        @translate="onTranslate"
+        @retranslate="onRetranslate"
+        @copy-original="onCopyOriginal"
+        @copy-translation="onCopyTranslation"
+        @toggle-original="onToggleOriginal"
+        @ocr-copy-original="onOcrCopyOriginal"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { LogicalSize } from '@tauri-apps/api/dpi'
+import { getCurrentWindow, currentMonitor } from '@tauri-apps/api/window'
+import { LogicalSize, LogicalPosition } from '@tauri-apps/api/dpi'
 import {
   getPinImage,
   getConfig,
@@ -76,8 +81,7 @@ const TAG = 'PinView'
 
 // 阴影内边距，需与后端 window/mod.rs 中的 PIN_PADDING 保持一致
 const PIN_PADDING = 14
-// 译文面板最大宽度
-const MAX_PANEL_WIDTH = 340
+
 
 type TranslateStatus = 'idle' | 'translating' | 'done' | 'error'
 
@@ -112,78 +116,109 @@ const shadowStyle = ref('0 1px 5px 1px rgba(0,0,0,0.4)')
 // 保存原始 base64 数据用于翻译
 let rawBase64Data = ''
 
+const leftColumnRef = ref<HTMLElement | null>(null)
+
 // 图片逻辑像素尺寸（用于窗口大小计算）
-let logicalImageWidth = 0
-let logicalImageHeight = 0
-// 译文面板宽度（翻译完成后固定）
-let storedPanelWidth = 0
+const logicalImageWidth = ref(0)
+const logicalImageHeight = ref(0)
 
 const imageArea = ref<HTMLElement | null>(null)
+
+// 核心叠放区（截图 + 译文）样式
+const coreStackStyle = computed(() => {
+  if (!logicalImageWidth.value) return undefined
+  const w = Math.max(logicalImageWidth.value, 160)
+  return {
+    width: `${w}px`
+  }
+})
 
 let mouseDownX = 0
 let mouseDownY = 0
 let hasStartedDrag = false
 
-/** HTML 转义，防止译文内容中出现 HTML 标签破坏布局 */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+
+// 节流控制：防止高频 setSize 导致 WebKitGTK 内存崩溃
+const RESIZE_THROTTLE_MS = 80
+let resizeThrottleTimer: ReturnType<typeof setTimeout> | null = null
+let lastResizeTime = 0
+let pendingResizePanel: boolean | null = null
 
 /**
- * 离屏测量译文面板的自然宽度
- * 创建一个与面板样式相同的隐藏元素，测量其 scrollWidth 以确定内容宽度
+ * 根据当前状态调整窗口大小（节流版本）
+ * 在拖拽拉伸期间，限制 setSize 调用频率为每 80ms 最多 1 次，
+ * 避免 WebKitGTK 底层因过于密集的窗口几何操作导致 malloc 内存损坏崩溃。
  */
-function measurePanelWidth(blocks: TranslatedBlock[]): number {
-  const el = document.createElement('div')
-  el.style.cssText = `
-    position: fixed; left: -9999px; top: 0;
-    font-size: 13px; line-height: 1.8;
-    padding: 16px; max-width: ${MAX_PANEL_WIDTH}px;
-    width: max-content;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    word-break: break-word; white-space: pre-wrap;
-    color: #f0f0f0;
-  `
-  el.innerHTML = blocks.map((b, i) => {
-    const text = escapeHtml(b.translated)
-    const sep = i < blocks.length - 1
-      ? '<div style="height:1px;margin:10px 0;background:rgba(255,255,255,0.08)"></div>'
-      : ''
-    return `<div style="margin-bottom:4px">${text}${sep}</div>`
-  }).join('')
+function updateWindowSize(includePanel: boolean) {
+  const now = Date.now()
+  const elapsed = now - lastResizeTime
 
-  document.body.appendChild(el)
-  const w = Math.min(el.scrollWidth, MAX_PANEL_WIDTH)
-  document.body.removeChild(el)
-  return Math.max(w, 80) // 最小宽度 80px
-}
-
-/** 根据当前状态调整窗口大小 */
-async function updateWindowSize(includePanel: boolean) {
-  if (!logicalImageWidth || !logicalImageHeight) return
-
-  const controlBarH = 36
-  let width = logicalImageWidth + PIN_PADDING * 2
-  let height = logicalImageHeight + controlBarH + PIN_PADDING * 2
-
-  if (includePanel && storedPanelWidth > 0) {
-    width += storedPanelWidth
-    // 如果面板已被拉伸且高度超过图片高度，增加窗口高度
-    if (panelHeight.value && panelHeight.value > logicalImageHeight) {
-      height += (panelHeight.value - logicalImageHeight)
+  if (elapsed >= RESIZE_THROTTLE_MS) {
+    lastResizeTime = now
+    pendingResizePanel = null
+    doUpdateWindowSize(includePanel)
+  } else {
+    // 记录最新请求，等节流间隔到期后执行
+    pendingResizePanel = includePanel
+    if (!resizeThrottleTimer) {
+      resizeThrottleTimer = setTimeout(() => {
+        resizeThrottleTimer = null
+        if (pendingResizePanel !== null) {
+          lastResizeTime = Date.now()
+          const p = pendingResizePanel
+          pendingResizePanel = null
+          doUpdateWindowSize(p)
+        }
+      }, RESIZE_THROTTLE_MS - elapsed)
     }
   }
+}
+
+/** 实际执行窗口大小调整（内部方法，由节流器调度） */
+async function doUpdateWindowSize(includePanel: boolean) {
+  if (!logicalImageWidth.value || !logicalImageHeight.value) return
+
+  const currentWindow = getCurrentWindow()
+
+  // 计算整体宽度：核心叠放区宽 + 控制栏宽 + 阴影边距
+  const coreW = Math.max(logicalImageWidth.value, 160)
+  const controlBarW = imageLoaded.value ? 90 + 8 : 0
+  const width = coreW + controlBarW + PIN_PADDING * 2
+
+  // 计算整体高度：核心叠放区高（包含译文拉伸高度）与控制栏最小高度取最大值
+  const coreH = logicalImageHeight.value + (includePanel ? panelHeight.value || 120 : 0)
+  const height = Math.max(coreH, 150) + PIN_PADDING * 2
 
   try {
-    await getCurrentWindow().setSize(new LogicalSize(width, height))
+    await currentWindow.setSize(new LogicalSize(width, height))
     logger.info(TAG, `窗口大小调整: ${width}x${height} (includePanel=${includePanel})`)
   } catch (err) {
     logger.error(TAG, `窗口大小调整失败: ${err}`, err)
+  }
+}
+
+/** 初始布局时检查屏幕边界并平移窗口（仅在初始加载/翻译完成时调用，不在拖拽中调用） */
+async function adjustWindowPositionIfNeeded() {
+  try {
+    const currentWindow = getCurrentWindow()
+    const dpr = window.devicePixelRatio || 1
+    const monitor = await currentMonitor()
+    if (!monitor) return
+
+    const coreW = Math.max(logicalImageWidth.value, 160)
+    const controlBarW = imageLoaded.value ? 90 + 8 : 0
+    const width = coreW + controlBarW + PIN_PADDING * 2
+
+    const posPhys = await currentWindow.outerPosition()
+    const posLogX = posPhys.x / dpr
+    const monitorRightLog = (monitor.position.x + monitor.size.width) / dpr
+
+    if (posLogX + width > monitorRightLog - 10) {
+      const newLogX = Math.max(monitor.position.x / dpr, monitorRightLog - width - 20)
+      await currentWindow.setPosition(new LogicalPosition(newLogX, posPhys.y / dpr))
+    }
+  } catch (err) {
+    logger.error(TAG, `防越界平移窗口坐标失败: ${err}`, err)
   }
 }
 
@@ -272,24 +307,27 @@ async function onImageLoad(event: Event) {
   if (!img || !img.naturalWidth || !img.naturalHeight) return
 
   const dpr = window.devicePixelRatio || 1
-  logicalImageWidth = img.naturalWidth / dpr
-  logicalImageHeight = img.naturalHeight / dpr
+  logicalImageWidth.value = img.naturalWidth / dpr
+  logicalImageHeight.value = img.naturalHeight / dpr
 
-  logger.info(TAG, `图片加载完成: naturalSize=${img.naturalWidth}x${img.naturalHeight}, dpr=${dpr}, logicalSize=${logicalImageWidth}x${logicalImageHeight}`)
+  logger.info(TAG, `图片加载完成: naturalSize=${img.naturalWidth}x${img.naturalHeight}, dpr=${dpr}, logicalSize=${logicalImageWidth.value}x${logicalImageHeight.value}`)
 
   // 设置图片区域显式尺寸，防止 flex stretch 导致图片被拉伸变形
   if (imageArea.value) {
-    imageArea.value.style.width = `${logicalImageWidth}px`
-    imageArea.value.style.height = `${logicalImageHeight}px`
+    imageArea.value.style.width = `${logicalImageWidth.value}px`
+    imageArea.value.style.height = `${logicalImageHeight.value}px`
   }
 
   // 分析边缘亮度以设置自适应阴影
   analyzeEdgeBrightness(img)
 
-  await updateWindowSize(false)
-
   // 图片加载完成后再显示 ControlBar，避免按钮出现在错误位置
   imageLoaded.value = true
+
+  // 等待 ControlBar 渲染后，再基于真实 DOM 尺寸计算并调整窗口大小
+  await nextTick()
+  updateWindowSize(false)
+  adjustWindowPositionIfNeeded()
 }
 
 onMounted(async () => {
@@ -391,25 +429,8 @@ function onResizeStart(e: MouseEvent) {
 }
 
 /** 拉伸后更新窗口高度 */
-async function updateWindowSizeAfterPanelResize(panelH: number) {
-  if (!logicalImageWidth || !logicalImageHeight) return
-
-  const controlBarH = 36
-  let width = logicalImageWidth + PIN_PADDING * 2
-  if (storedPanelWidth > 0) {
-    width += storedPanelWidth
-  }
-
-  let height = logicalImageHeight + controlBarH + PIN_PADDING * 2
-  if (panelH > logicalImageHeight) {
-    height += (panelH - logicalImageHeight)
-  }
-
-  try {
-    await getCurrentWindow().setSize(new LogicalSize(width, height))
-  } catch (err) {
-    logger.error(TAG, `拉伸后窗口大小调整失败: ${err}`, err)
-  }
+function updateWindowSizeAfterPanelResize(_panelH?: number) {
+  updateWindowSize(hasTranslation.value && !showOriginal.value)
 }
 
 async function onDoubleClick(event: MouseEvent) {
@@ -463,16 +484,15 @@ async function doTranslate(forceRetranslate: boolean) {
 
     logger.info(TAG, `翻译完成，共 ${translatedBlocks.value.length} 个翻译块`)
 
-    // 在下一帧测量面板宽度，并将面板初始高度设为图片高度
+    // 面板初始高度与图片高度等高，若图片太窄导致高度太矮，保证至少有 120px 初始可读高度
     await nextTick()
-    storedPanelWidth = measurePanelWidth(result.blocks)
+    const initH = Math.max(logicalImageHeight.value, 120)
+    panelHeight.value = initH
+    initialPanelHeight = initH
+    logger.info(TAG, `译文面板初始高度: ${initialPanelHeight}px`)
 
-    // 面板初始高度等于贴图图片高度，确保面板与图片等高
-    panelHeight.value = logicalImageHeight
-    initialPanelHeight = logicalImageHeight
-    logger.info(TAG, `译文面板测量宽度: ${storedPanelWidth}px, 初始高度: ${initialPanelHeight}px`)
-
-    await updateWindowSize(true)
+    updateWindowSize(true)
+    adjustWindowPositionIfNeeded()
   } catch (err) {
     errorMessage.value = String(err)
     translateStatus.value = 'error'
@@ -533,7 +553,7 @@ async function onToggleOriginal() {
   showOriginal.value = !showOriginal.value
   // 切换后立即调整窗口大小
   await nextTick()
-  await updateWindowSize(!showOriginal.value)
+  updateWindowSize(!showOriginal.value)
 }
 </script>
 
@@ -549,15 +569,15 @@ async function onToggleOriginal() {
   overflow: hidden;
 }
 
-.content-row {
+.main-layout {
   display: flex;
   flex-direction: row;
   flex: 1;
   min-height: 0;
+  gap: 8px;
 }
 
-/* 左侧列：图片和控制栏固定在一起，不随面板拉伸而移动 */
-.left-column {
+.core-stack {
   display: flex;
   flex-direction: column;
   align-self: flex-start;
@@ -583,8 +603,8 @@ async function onToggleOriginal() {
 /* 译文面板 */
 .translation-panel {
   background: rgba(30, 30, 30, 0.92);
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  max-width: 340px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  width: 100%;
   font-size: 13px;
   line-height: 1.8;
   color: #f0f0f0;
@@ -592,6 +612,7 @@ async function onToggleOriginal() {
   flex-direction: column;
   overflow: hidden;
   align-self: flex-start;
+  margin-top: 4px;
 }
 
 /* 译文内容可滚动容器 */

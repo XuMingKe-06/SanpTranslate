@@ -98,7 +98,25 @@ pub fn capture_region_from_cache(
         }
     })?;
 
-    let cropped = image::imageops::crop(&mut screen.image, x, y, width, height);
+    // 动态计算由于 XWayland 缩放引起的分辨率比例差异
+    let ratio_x = screen.image.width() as f64 / screen.tauri_monitor_width as f64;
+    let ratio_y = screen.image.height() as f64 / screen.tauri_monitor_height as f64;
+
+    let real_x = (x as f64 * ratio_x).round() as u32;
+    let real_y = (y as f64 * ratio_y).round() as u32;
+    let real_width = (width as f64 * ratio_x).round() as u32;
+    let real_height = (height as f64 * ratio_y).round() as u32;
+
+    log::info!(
+        "[CMD] 分辨率转换: 真实截图={:?}, Tauri报告={:?}, 缩放比=({:.4}, {:.4}), 原始裁剪区域={:?}, 实际裁剪区域={:?}",
+        (screen.image.width(), screen.image.height()),
+        (screen.tauri_monitor_width, screen.tauri_monitor_height),
+        ratio_x, ratio_y,
+        (x, y, width, height),
+        (real_x, real_y, real_width, real_height)
+    );
+
+    let cropped = image::imageops::crop(&mut screen.image, real_x, real_y, real_width, real_height);
     let cropped_image = cropped.to_image();
 
     let rgba_for_clipboard = cropped_image.as_raw().clone();
@@ -219,9 +237,14 @@ pub async fn translate_image(
     log::info!("[CMD] translate_image: API 密钥读取成功");
 
     // ===== 第一步：OCR 识别文字（同时用于历史缓存匹配和后续翻译） =====
-    log::info!("[CMD] translate_image: 正在进行 OCR 识别...");
+    let ocr_lang = if config.ocr_language == "auto" {
+        "chi_sim+eng+jpn"
+    } else {
+        &config.ocr_language
+    };
+    log::info!("[CMD] translate_image: 正在进行 OCR 识别，选择={}, 实际加载={}...", config.ocr_language, ocr_lang);
     let ocr_blocks = crate::ocr::extract_text_with_positions(
-        &app, &image_data, "chi_sim+eng"
+        &app, &image_data, ocr_lang
     ).await.map_err(|e| format!("OCR识别失败: {}", e))?;
 
     if ocr_blocks.is_empty() {
@@ -517,9 +540,17 @@ pub async fn ocr_image(
     image_data: String,
     app: tauri::AppHandle,
 ) -> Result<Vec<crate::ocr::OcrBlock>, String> {
-    log::info!("[CMD] ocr_image: 正在进行 OCR 识别...");
+    let config_manager = crate::config::ConfigManager::new(&app).map_err(|e| e.to_string())?;
+    let config = config_manager.load().map_err(|e| e.to_string())?;
+
+    let ocr_lang = if config.ocr_language == "auto" {
+        "chi_sim+eng+jpn"
+    } else {
+        &config.ocr_language
+    };
+    log::info!("[CMD] ocr_image: 正在进行 OCR 识别，选择={}, 实际加载={}...", config.ocr_language, ocr_lang);
     let ocr_blocks = crate::ocr::extract_text_with_positions(
-        &app, &image_data, "chi_sim+eng"
+        &app, &image_data, ocr_lang
     ).await.map_err(|e| format!("OCR识别失败: {}", e))?;
 
     if ocr_blocks.is_empty() {

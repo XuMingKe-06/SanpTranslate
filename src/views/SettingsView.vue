@@ -80,6 +80,12 @@
           <!-- 翻译配置区域 -->
           <n-card :title="t('settings.translateConfig')" size="small">
             <n-form label-placement="left" label-width="100" :show-feedback="false">
+              <n-form-item :label="t('settings.ocrLanguage')">
+                <n-select
+                  v-model:value="formData.ocr_language"
+                  :options="ocrLanguageOptions"
+                />
+              </n-form-item>
               <n-form-item :label="t('settings.targetLanguage')">
                 <n-select
                   v-model:value="formData.target_language"
@@ -191,6 +197,7 @@ const formData = reactive({
   model: '',
   target_language: 'zh-CN',
   language: 'auto',
+  ocr_language: 'auto',
   shortcuts_capture: '',
   shortcuts_pin_clipboard: '',
   shortcuts_text_translate: '',
@@ -230,12 +237,21 @@ const languageOptions = computed(() => [
   { label: t('settings.langRu'), value: 'ru' },
 ])
 
+// OCR 识别语言选项列表
+const ocrLanguageOptions = computed(() => [
+  { label: t('settings.ocrLanguageAuto'), value: 'auto' },
+  { label: t('settings.langZhCN'), value: 'chi_sim' },
+  { label: t('settings.langEn'), value: 'eng' },
+  { label: t('settings.langJa'), value: 'jpn' },
+])
+
 /** 将后端配置填充到表单 */
 function populateForm(config: AppConfig) {
   formData.api_base_url = config.api_base_url
   formData.model = config.model
   formData.target_language = config.target_language
   formData.language = config.language || 'auto'
+  formData.ocr_language = config.ocr_language || 'auto'
   formData.shortcuts_capture = config.shortcuts.capture
   formData.shortcuts_pin_clipboard = config.shortcuts.pin_clipboard
   formData.shortcuts_text_translate = config.shortcuts.text_translate
@@ -286,6 +302,7 @@ async function onSave() {
       model: formData.model.trim(),
       target_language: formData.target_language,
       language: formData.language,
+      ocr_language: formData.ocr_language,
       shortcuts: {
         capture: formData.shortcuts_capture.trim(),
         pin_clipboard: formData.shortcuts_pin_clipboard.trim(),

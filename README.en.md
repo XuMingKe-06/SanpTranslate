@@ -38,7 +38,7 @@
 | **Region Screenshot Translation** | Global hotkey `Ctrl+Alt+L` activates the overlay, drag to select any region, screenshot pinned at original position automatically |
 | **Clipboard Pin** | `Ctrl+Alt+P` pastes an image from the system clipboard onto the desktop for translation |
 | **Text Translation** | `Ctrl+Alt+M` opens a clean text translation window with customizable target language, `Ctrl+Enter` for quick translation |
-| **Local OCR** | Built-in Tesseract offline engine, automatically recognizes text and paragraph positions in screenshots — no internet required |
+| **Local OCR** | Built-in Tesseract offline engine, supports Chinese, English, and Japanese, supports local smart auto-detection — no internet required |
 | **AI Translation** | Supports any OpenAI-compatible API (bring your own model and key), directly connecting to your AI capabilities |
 | **Smart Translation Cache** | Repeated content automatically matches historical records; cache hit skips the API call for instant results |
 | **In-Place Pin Window** | Screenshot fixed at the original capture position, right-side translation panel supports height adjustment, transparent dark theme for distraction-free viewing |
@@ -122,8 +122,20 @@ Download the latest installer for your platform from the [Releases](https://gith
 ### System Requirements
 
 - **Windows**: Windows 10 (1803+), WebView2 (included with the system)
-- **macOS**: macOS 12+, WebKit (included with the system)
-- **Linux**: X11/Wayland support, WebKitGTK required
+- **macOS**: macOS 12+, WebKit (included with the system), with Tesseract and language data installed via Homebrew:
+  ```bash
+  brew install tesseract tesseract-lang
+  ```
+- **Linux**: X11/Wayland support, WebKitGTK required, with Tesseract OCR engine and required language packs installed:
+  - **Ubuntu / Debian**:
+    ```bash
+    sudo apt update
+    sudo apt install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng tesseract-ocr-jpn
+    ```
+  - **Arch Linux**:
+    ```bash
+    sudo pacman -S tesseract tesseract-data-chi_sim tesseract-data-eng tesseract-data-jpn
+    ```
 
 ---
 
@@ -139,7 +151,7 @@ Download the latest installer for your platform from the [Releases](https://gith
 | Routing | [Vue Router 5](https://router.vuejs.org/) |
 | Internationalization | [vue-i18n 11](https://vue-i18n.intlify.dev/) |
 | Screen Capture | [xcap](https://crates.io/crates/xcap) |
-| OCR | Tesseract CLI (bundled `chi_sim` + `eng` language data) |
+| OCR | Tesseract CLI (supports Chinese, English, and Japanese, supports local smart auto-detection) |
 | AI Translation | HTTP (reqwest) → OpenAI-compatible API |
 | Database | SQLite ([rusqlite](https://crates.io/crates/rusqlite)) |
 | Secure Storage | [keyring](https://crates.io/crates/keyring) (OS credential manager) |

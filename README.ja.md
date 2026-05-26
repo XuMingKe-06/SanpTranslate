@@ -38,7 +38,7 @@
 | **領域選択翻訳** | グローバルホットキー `Ctrl+Alt+L` でオーバーレイ起動、任意の領域をドラッグ選択、スクリーンショットを元の位置に自動貼り付け |
 | **クリップボード貼り付け** | `Ctrl+Alt+P` でシステムクリップボードの画像をデスクトップに貼り付けて翻訳 |
 | **テキスト翻訳** | `Ctrl+Alt+M` でシンプルなテキスト翻訳ウィンドウを開き、翻訳先言語のカスタマイズに対応、`Ctrl+Enter` で素早く翻訳 |
-| **ローカル OCR** | Tesseract オフラインエンジンを内蔵、インターネット不要で文字と段落位置を自動認識 |
+| **ローカル OCR** | Tesseract オフラインエンジンを内蔵、中国語（簡体字）、英語、日本語に対応、ローカルでのスマート自動言語検出に対応 — インターネット不要 |
 | **AI 翻訳** | OpenAI 互換 API に対応（モデルとキーは自己管理）、お使いの AI 環境と直接連携 |
 | **スマート翻訳キャッシュ** | 同一コンテンツは履歴を自動照合、キャッシュヒット時は API 呼び出しをスキップして瞬時に結果表示 |
 | **その場固定ウィンドウ** | スクリーンショットをキャプチャ位置に固定、右側の翻訳パネルは高さ調整可能、ダークテーマで没入感を実現 |
@@ -122,8 +122,21 @@ Ctrl+Alt+M を押す         テキスト翻訳ウィンドウを開き、直接
 ### システム要件
 
 - **Windows**: Windows 10 (1803+)、WebView2（システム標準搭載）
-- **macOS**: macOS 12+、WebKit（システム標準搭載）
-- **Linux**: X11/Wayland 対応、WebKitGTK が必要
+- **macOS**: macOS 12+、WebKit（システム標準搭載）、Homebrew 経由で Tesseract および言語データのインストールが必要：
+  ```bash
+  brew install tesseract tesseract-lang
+  ```
+- **Linux**: X11/Wayland 対応、WebKitGTK が必要、また Tesseract OCR エンジンおよび対応する言語パックのインストールが必要（自動検出および単一言語モードの双方で対応する `.traineddata` ファイルが必要）：
+  - **Ubuntu / Debian**:
+    ```bash
+    sudo apt update
+    # Tesseract エンジン、簡体字中国語、英語、日本語言語パックのインストール
+    sudo apt install tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng tesseract-ocr-jpn
+    ```
+  - **Arch Linux**:
+    ```bash
+    sudo pacman -S tesseract tesseract-data-chi_sim tesseract-data-eng tesseract-data-jpn
+    ```
 
 ---
 
@@ -139,7 +152,7 @@ Ctrl+Alt+M を押す         テキスト翻訳ウィンドウを開き、直接
 | ルーティング | [Vue Router 5](https://router.vuejs.org/) |
 | 国際化 | [vue-i18n 11](https://vue-i18n.intlify.dev/) |
 | スクリーンキャプチャ | [xcap](https://crates.io/crates/xcap) |
-| OCR | Tesseract CLI（`chi_sim` + `eng` 言語データバンドル） |
+| OCR | Tesseract CLI（簡体字中国語、英語、日本語に対応、ローカルでのスマート自動言語検出に対応） |
 | AI 翻訳 | HTTP (reqwest) → OpenAI 互換 API |
 | データベース | SQLite ([rusqlite](https://crates.io/crates/rusqlite)) |
 | セキュアストレージ | [keyring](https://crates.io/crates/keyring)（OS 認証情報マネージャー） |

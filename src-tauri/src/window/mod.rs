@@ -21,6 +21,10 @@ pub struct CachedScreen {
     pub monitor_y: i32,
     /// 显示器缩放因子
     pub scale_factor: f64,
+    /// 捕获时 Tauri 报告的显示器物理宽度
+    pub tauri_monitor_width: u32,
+    /// 捕获时 Tauri 报告的显示器物理高度
+    pub tauri_monitor_height: u32,
 }
 
 /// 缓存截图存储
@@ -231,22 +235,61 @@ fn create_overlay_window_inner(app: &AppHandle) -> Result<(), AppError> {
     let monitor_w = monitor.size().width as f64 / scale_factor;
     let monitor_h = monitor.size().height as f64 / scale_factor;
 
-    let _window = {
+    let is_wayland = {
+        #[cfg(target_os = "linux")]
+        {
+            let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+            let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+            let gdk_backend = std::env::var("GDK_BACKEND").unwrap_or_default();
+            (session_type == "wayland" || !wayland_display.is_empty()) && gdk_backend != "x11"
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
+    };
+
+    let window = {
         let builder = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("/overlay".into()))
             .title("SnapTranslate - 截图蒙版")
             .decorations(false)
             .always_on_top(true);
         #[cfg(not(target_os = "macos"))]
         let builder = builder.transparent(true);
+
+        let builder = if is_wayland {
+            builder.fullscreen(true)
+        } else {
+            builder
+                .position(monitor_x, monitor_y)
+                .inner_size(monitor_w, monitor_h)
+        };
+
         builder
             .shadow(false)
             .focusable(true)
             .resizable(false)
-            .position(monitor_x, monitor_y)
-            .inner_size(monitor_w, monitor_h)
+            .visible(false)
             .build()
             .map_err(|e| AppError::ConfigError(format!("创建蒙版窗口失败: {}", e)))?
     };
+
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        if let Ok(gtk_window) = window.gtk_window() {
+            // Dock 类型窗口在 X11/GNOME 中不受面板 strut 约束，会直接覆盖在面板之上
+            gtk_window.set_type_hint(gtk::gdk::WindowTypeHint::Dock);
+            // 确保保持最上层
+            gtk_window.set_keep_above(true);
+            // 不在任务栏和分页器中显示
+            gtk_window.set_skip_taskbar_hint(true);
+            gtk_window.set_skip_pager_hint(true);
+        }
+    }
+
+    let _ = window.show();
+    let _ = window.set_focus();
 
     Ok(())
 }
