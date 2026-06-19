@@ -276,14 +276,38 @@ fn create_overlay_window_inner(app: &AppHandle) -> Result<(), AppError> {
                 .inner_size(monitor_w, monitor_h)
         };
 
-        builder
+        let builder = builder
             .shadow(false)
             .focusable(true)
-            .resizable(false)
-            .visible(false)
+            .resizable(false);
+        #[cfg(target_os = "linux")]
+        let builder = builder.visible(false);
+        builder
             .build()
             .map_err(|e| AppError::ConfigError(format!("创建蒙版窗口失败: {}", e)))?
     };
+
+    // Windows: 禁用 DWM 过渡动画，防止蒙版窗口显示/关闭时出现缩放动画
+    #[cfg(target_os = "windows")]
+    {
+        use raw_window_handle::HasWindowHandle;
+        use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED};
+        if let Ok(handle) = window.window_handle() {
+            let raw = handle.as_ref();
+            if let raw_window_handle::RawWindowHandle::Win32(win32) = raw {
+                let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
+                let disabled: i32 = 1;
+                unsafe {
+                    DwmSetWindowAttribute(
+                        hwnd,
+                        DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                        &disabled as *const _ as *const std::ffi::c_void,
+                        std::mem::size_of::<i32>() as u32,
+                    );
+                }
+            }
+        }
+    }
 
     #[cfg(target_os = "linux")]
     {
@@ -299,6 +323,7 @@ fn create_overlay_window_inner(app: &AppHandle) -> Result<(), AppError> {
         }
     }
 
+    #[cfg(target_os = "linux")]
     let _ = window.show();
     let _ = window.set_focus();
 

@@ -243,28 +243,31 @@ async function onMouseUp(e: MouseEvent) {
     logger.error(TAG, `框选处理失败: ${err}`, err)
   }
 
-  // IPC 完成后销毁蒙版
-  getCurrentWindow().destroy().catch((err) => {
-    logger.error(TAG, `销毁蒙版失败: ${err}`, err)
-  })
+  // IPC 完成后关闭蒙版（DWM 动画已在窗口创建时禁用）
+  await closeOverlay()
+}
+
+async function closeOverlay() {
+  const win = getCurrentWindow()
+  try {
+    await win.destroy()
+  } catch (err) {
+    logger.error(TAG, `关闭蒙版失败: ${err}`, err)
+  }
 }
 
 function onKeyDown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.preventDefault()
-    logger.info(TAG, '按下 Esc，销毁 overlay 窗口')
-    getCurrentWindow().destroy().catch((err) => {
-      logger.error(TAG, `Esc销毁窗口失败: ${err}`, err)
-    })
+    logger.info(TAG, '按下 Esc，关闭 overlay 窗口')
+    closeOverlay()
   }
 }
 
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
-  logger.info(TAG, '右键点击，销毁 overlay 窗口')
-  getCurrentWindow().destroy().catch((err) => {
-    logger.error(TAG, `右键销毁窗口失败: ${err}`, err)
-  })
+  logger.info(TAG, '右键点击，关闭 overlay 窗口')
+  closeOverlay()
 }
 
 function initCanvasSize() {
