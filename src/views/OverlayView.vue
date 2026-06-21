@@ -89,14 +89,16 @@ function drawCanvas() {
   const rw = Math.abs(_endX - _startX) * dpr
   const rh = Math.abs(_endY - _startY) * dpr
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-
   if (_isSelecting && rw > 0 && rh > 0) {
-    // 4 个矩形遮住选区外部，比 clip+再绘大图 快 5-10x
-    ctx.fillRect(0, 0, cw, ry)               // 顶部
-    ctx.fillRect(0, ry + rh, cw, ch - ry - rh) // 底部
-    ctx.fillRect(0, ry, rx, rh)              // 左侧
-    ctx.fillRect(rx + rw, ry, cw - rx - rw, rh) // 右侧
+    // 单一 fillRect + clip 裁剪出选区"镂空"，避免 4 块矩形拼接处的抗锯齿横线
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(rx, ry, rw, rh)   // 内矩形（选区）
+    ctx.rect(0, 0, cw, ch)     // 外矩形（全屏）
+    ctx.clip('evenodd')        // 裁剪到选区外部
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+    ctx.fillRect(0, 0, cw, ch)
+    ctx.restore()
 
     // 选区虚线框
     ctx.save()
@@ -106,6 +108,7 @@ function drawCanvas() {
     ctx.strokeRect(rx, ry, rw, rh)
     ctx.restore()
   } else {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.fillRect(0, 0, cw, ch)
   }
 }
